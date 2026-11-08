@@ -6,6 +6,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#141416" />
   <title>Chart Studio — 譜面エディタ</title>
+  <script>
+    // 起動した時、プラグインの準備ができるまで画面を暗く隠す（プラグインが api.ui.setBootCover(true) にした時）。
+    // まだ決まっていない時（入れて最初に開いた時）は、音ゲーモードがタイトル画面を出しそうなら隠す
+    try {
+      const v = localStorage.getItem('chartStudio.bootCover');
+      let on = v === '1';
+      if (v === null) {
+        const enabled = JSON.parse(localStorage.getItem('chartStudio.plugins.enabled.v1') || '{}') || {};
+        const gm = JSON.parse(localStorage.getItem('chartStudio.plugin.game-mode.settings') || '{}') || {};
+        on = enabled['game-mode'] !== false && gm.showOnStart !== false;
+      }
+      if (on) document.documentElement.classList.add('cs-boot');
+    } catch (e) { }
+  </script>
+  <style>
+    html.cs-boot body::after { content: ""; position: fixed; inset: 0; z-index: 2147483000; background: #05060d; }
+  </style>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     // スクリプトで生成される部品も含め、Tailwind の既定色（ネオン系）を落ち着いた色に置き換える
@@ -715,6 +732,21 @@
       gap: 8px;
     }
 
+    /* 横に並べた行の左の説明：長い時は折り返す（右の入力欄が外にはみ出さないように） */
+    .row>.row-text {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .row>.row-text .lbl {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .row>.row-text+.hstack {
+      flex: none;
+    }
+
     .stack>*+* {
       margin-top: 8px;
     }
@@ -959,6 +991,10 @@
 
     /* ---------- プラグインの一覧 ---------- */
     .plugin-slot:empty {
+      display: none;
+    }
+
+    .plugin-slot:empty+.topbar-start-divider {
       display: none;
     }
 
@@ -1676,6 +1712,185 @@
       display: none;
     }
 
+    /* ---------- 右のパネルのタブ（編集・演出・確認）と、見出しを押してたたむ欄 ---------- */
+    .side-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      gap: 4px;
+      padding: 8px 10px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    .side-tabs button {
+      flex: 1;
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--raised);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .side-tabs button:hover {
+      color: var(--text);
+      border-color: var(--line-strong);
+    }
+
+    .side-tabs button.is-on {
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+      color: var(--accent-text);
+    }
+
+    .side-tabs button[hidden] {
+      display: none;
+    }
+
+    .side-tab-badge {
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 8px;
+      background: var(--raised-2);
+      color: var(--text);
+      font: 500 10px/16px 'IBM Plex Mono', ui-monospace, monospace;
+      text-align: center;
+    }
+
+    .side-tab-badge.is-bad {
+      background: var(--red);
+      color: #fff;
+    }
+
+    #rightPanel[data-tab="edit"] .section[data-group]:not([data-group="edit"]),
+    #rightPanel[data-tab="effect"] .section[data-group]:not([data-group="effect"]),
+    #rightPanel[data-tab="check"] .section[data-group]:not([data-group="check"]) {
+      display: none !important;
+    }
+
+    .section-title[data-fold] {
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      border-radius: 3px;
+    }
+
+    .section-title[data-fold]:hover {
+      color: var(--accent-text);
+    }
+
+    .section-title[data-fold]:focus-visible {
+      outline: 1px solid var(--accent-line);
+      outline-offset: 2px;
+    }
+
+    .section-chevron {
+      width: 10px;
+      font-size: 9px;
+      color: var(--dim);
+      transition: transform .15s;
+    }
+
+    .section.is-collapsed .section-chevron {
+      transform: rotate(-90deg);
+    }
+
+    .section.is-collapsed> :not(.section-head) {
+      display: none !important;
+    }
+
+    .section.is-collapsed>.section-head {
+      margin-bottom: 0;
+    }
+
+    /* 「ツール」メニューの見出し */
+    .menu-panel .menu-head {
+      padding: 6px 10px 2px;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--dim);
+    }
+
+    .menu-panel .menu-head:not(:first-child) {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    /* 狭い PC では、ボタンの文字を隠してアイコンだけにする（マウスを乗せると名前が出る。スマホはバーが横に動くので文字のまま） */
+    @media (min-width: 1024px) and (max-width: 1599px) {
+      .bar .compact-label>span {
+        display: none;
+      }
+
+      .bar .btn.compact-label {
+        width: 28px;
+        padding: 0;
+      }
+
+      .bar .btn-sm.compact-label {
+        width: 24px;
+        padding: 0;
+      }
+
+      .topbar {
+        column-gap: 6px;
+      }
+    }
+
+    @media (max-width: 1599px) {
+      .wide-only {
+        display: none !important;
+      }
+    }
+
+    @media (min-width: 1024px) and (max-width: 1365px) {
+      .bar .compact-narrow>span {
+        display: none;
+      }
+
+      .bar .btn-sm.compact-narrow {
+        width: 24px;
+        padding: 0;
+      }
+
+      .narrow-hide {
+        display: none !important;
+      }
+    }
+
+    @media (max-width: 1499px) {
+      #sliderPlayhead {
+        width: 88px !important;
+      }
+    }
+
+    /* 再生位置は、譜面の左端のルーラーや赤い線のドラッグでも動かせる */
+    @media (max-width: 1365px) and (min-width: 1024px) {
+      #sliderPlayhead {
+        display: none;
+      }
+    }
+
+    @media (max-width: 1023px) {
+      .side-tabs {
+        position: static;
+      }
+    }
+
     /* ---------- スマホ・タブレット ---------- */
     @media (max-width: 1023px) {
       :root {
@@ -1940,8 +2155,9 @@
   <div class="app">
     <!-- ==================== 上段：再生・譜面設定・保存 ==================== -->
     <header class="bar topbar">
-      <div class="brand hide-compact"><span class="brand-mark"></span>Chart Studio</div>
-      <div class="divider hide-compact"></div>
+      <!-- 一番左のボタンの置き場（音ゲーモードの「タイトル」など。プラグインの ui.addButton('topbar-start', …)） -->
+      <div id="pluginTopbarStartSlot" class="hstack plugin-slot"></div>
+      <div class="divider topbar-start-divider"></div>
 
       <button id="btnPlay" class="btn btn-play" title="再生 / 一時停止 (Space)">
         <i class="fa-solid fa-play" id="iconPlay"></i><span id="lblPlayBtn">再生</span>
@@ -1985,40 +2201,42 @@
       <button id="btnUndo" class="btn btn-icon btn-ghost" title="元に戻す (Ctrl+Z)"><i class="fa-solid fa-rotate-left"></i></button>
       <button id="btnRedo" class="btn btn-icon btn-ghost" title="やり直し (Ctrl+Y)"><i class="fa-solid fa-rotate-right"></i></button>
       <button id="btnClearAll" class="btn btn-icon btn-ghost btn-danger" title="譜面を全消去"><i class="fa-regular fa-trash-can"></i></button>
-      <button id="btnOpenConstHelpModal" class="btn btn-ghost advanced-ui" title="条件式で使える定数">
-        <i class="fa-solid fa-book"></i><span class="hide-compact">定数</span>
-      </button>
-      <button id="btnOpenPlugins" class="btn btn-ghost hide-compact" title="プラグインのオン・オフと追加"><i class="fa-solid fa-puzzle-piece"></i><span>プラグイン</span></button>
+      <button id="btnOpenPlugins" class="btn btn-ghost hide-compact compact-label" title="プラグインのオン・オフと追加"><i class="fa-solid fa-puzzle-piece"></i><span>プラグイン</span></button>
       <button id="btnOpenSaveModal" class="btn btn-primary hide-compact"><i class="fa-regular fa-floppy-disk"></i>保存・読込</button>
       </div>
     </header>
 
     <!-- ==================== 下段：編集ツール・グリッド・表示 ==================== -->
     <div class="bar toolbar">
-      <div class="seg">
+      <div id="toolSeg" class="seg">
         <button data-tool="place" class="tool-btn active" title="配置 (1)"><i class="fa-solid fa-pen"></i>配置</button>
         <button data-tool="select" class="tool-btn" title="選択・移動・幅変更 (2)"><i class="fa-solid fa-arrow-pointer"></i>選択</button>
         <button data-tool="relay" class="tool-btn" title="中継点の追加・カーブ切替 (3)"><i class="fa-solid fa-bezier-curve"></i>中継点</button>
         <button data-tool="erase" class="tool-btn" title="消しゴム (4)"><i class="fa-solid fa-eraser"></i>消去</button>
-        <button data-tool="soflan" class="tool-btn" title="ソフラン配置 (5)"><i class="fa-solid fa-gauge-high"></i>ソフラン</button>
       </div>
-      <label class="hstack" title="配置するソフランの倍率 (0〜100)"><span class="lbl">×</span>
-        <input id="inputSoflanSpeed" type="number" min="0" max="100" step="0.25" value="2.0" class="field num" style="width:56px" /></label>
+      <!-- プラグインの道具の設定（ソフランの倍率など） -->
+      <span id="pluginToolOptionsSlot" class="hstack"></span>
 
       <div class="divider"></div>
 
-      <span class="lbl">グリッド</span>
-      <div id="gridButtonsContainer" class="seg mono">
-        <button data-grid="4" class="grid-btn">4</button>
-        <button data-grid="8" class="grid-btn">8</button>
-        <button data-grid="16" class="grid-btn active">16</button>
-        <button data-grid="32" class="grid-btn">32</button>
-        <button data-grid="64" class="grid-btn">64</button>
-        <button data-grid="128" class="grid-btn">128</button>
-        <button data-grid="192" class="grid-btn">192</button>
-        <button data-grid="1920" class="grid-btn" title="1/1920（1グリッド = 2 ticks）">1920</button>
-      </div>
-      <span id="lblGridTickInfo" class="lbl mono hide-compact">1/16 · 240t</span>
+      <span class="lbl narrow-hide">グリッド</span>
+      <button id="btnGridCoarser" type="button" class="btn btn-sm btn-icon" title="グリッドを粗くする（− キー）"><i class="fa-solid fa-minus"></i></button>
+      <select id="selectGrid" class="field mono" title="グリッドの細かさ（− / ＋ キーでも変えられます）">
+        <option value="4">1/4</option>
+        <option value="8">1/8</option>
+        <option value="12">1/12（3連）</option>
+        <option value="16" selected>1/16</option>
+        <option value="24">1/24（3連）</option>
+        <option value="32">1/32</option>
+        <option value="48">1/48（3連）</option>
+        <option value="64">1/64</option>
+        <option value="96">1/96（3連）</option>
+        <option value="128">1/128</option>
+        <option value="192">1/192</option>
+        <option value="1920">1/1920</option>
+      </select>
+      <button id="btnGridFiner" type="button" class="btn btn-sm btn-icon" title="グリッドを細かくする（＋ キー）"><i class="fa-solid fa-plus"></i></button>
+      <span id="lblGridTickInfo" class="lbl mono hide-compact wide-only" title="1 グリッドの Tick 数">240t</span>
 
       <div class="divider"></div>
 
@@ -2026,18 +2244,18 @@
       <button id="btnVZoomOut" class="btn btn-sm btn-icon" title="縮小"><i class="fa-solid fa-minus"></i></button>
       <input id="sliderVZoom" type="range" min="0" max="100" step="0.5" value="22" style="width:84px" title="1小節の高さ" />
       <button id="btnVZoomIn" class="btn btn-sm btn-icon" title="拡大"><i class="fa-solid fa-plus"></i></button>
-      <span id="lblVZoom" class="lbl mono" style="min-width:58px">960px</span>
+      <span id="lblVZoom" class="lbl mono wide-only" style="min-width:58px">960px</span>
       <button id="btnZoom1920" class="btn btn-sm" title="1/1920 が見える倍率まで拡大">最大</button>
 
       <span class="lbl">横</span>
       <input id="sliderHZoom" type="range" min="16" max="110" step="2" value="54" style="width:64px" title="1レーンの幅" />
-      <span id="lblHZoom" class="lbl mono" style="min-width:36px">54px</span>
+      <span id="lblHZoom" class="lbl mono wide-only" style="min-width:36px">54px</span>
       <button id="btnFitLanes" class="btn btn-sm" title="レーン幅を画面に合わせる">合わせる</button>
 
       <div class="bar-end">
       <div id="pluginToolbarSlot" class="hstack plugin-slot"></div>
-      <button id="btnToggleJudgmentPreview" class="btn btn-sm is-on" title="判定幅を譜面に重ねて表示"><i class="fa-solid fa-ruler-vertical"></i><span>判定幅</span></button>
-      <button id="btnToggleSimpleMode" class="btn btn-sm" title="ノーツ設定・インスペクタなど詳細な設定を表示"><i class="fa-solid fa-sliders"></i><span>詳細設定</span></button>
+      <button id="btnToggleJudgmentPreview" class="btn btn-sm is-on compact-narrow" title="判定幅：判定幅を譜面に重ねて表示"><i class="fa-solid fa-ruler-vertical"></i><span>判定幅</span></button>
+      <button id="btnToggleSimpleMode" class="btn btn-sm compact-narrow" title="詳細設定：ノーツ設定・インスペクタなど詳細な設定を表示"><i class="fa-solid fa-sliders"></i><span>詳細設定</span></button>
       </div>
     </div>
 
@@ -2050,7 +2268,7 @@
           <button type="button" class="btn btn-icon btn-ghost" data-close-sheet title="閉じる"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
-        <section class="section">
+        <section class="section" data-key="left:notes">
           <div class="section-head">
             <h2 class="section-title">ノーツ</h2>
             <button id="btnNewCustomPreset" class="btn btn-sm advanced-ui"><i class="fa-solid fa-plus"></i>追加</button>
@@ -2075,15 +2293,18 @@
             </div>
           </div>
 
-          <!-- ノーツ設定（詳細設定ON時のみ） -->
-          <div class="advanced-ui box stack" style="margin-top:10px">
-            <div class="row">
-              <span class="sub-title" style="margin:0">ノーツ設定 <span id="badgeEditingPresetType" class="mono" style="color:var(--dim);font-weight:500">TAP</span></span>
-              <div class="hstack">
-                <input id="presetColorInput" type="color" value="#4fa3d1" title="ノーツの色" />
-                <span id="lblPresetColorHex" class="lbl mono">#4FA3D1</span>
-              </div>
+        </section>
+
+        <!-- ノーツ設定（詳細設定ON時のみ。見出しを押すとたためる） -->
+        <section id="presetEditorSection" class="section advanced-ui" data-key="left:presetEditor">
+          <div class="section-head">
+            <h2 class="section-title">ノーツ設定 <span id="badgeEditingPresetType" class="mono" style="color:var(--dim);font-weight:500">TAP</span></h2>
+            <div class="hstack">
+              <input id="presetColorInput" type="color" value="#4fa3d1" title="ノーツの色" />
+              <span id="lblPresetColorHex" class="lbl mono">#4FA3D1</span>
             </div>
+          </div>
+          <div class="box stack">
 
             <div style="display:grid;grid-template-columns:1fr 84px;gap:8px">
               <label class="form-item"><span class="lbl">名前</span>
@@ -2100,7 +2321,7 @@
             <!-- タップ専用 -->
             <div id="tapHorizontalJudgeBox" class="stack">
               <div class="row">
-                <div>
+                <div class="row-text">
                   <div class="lbl">判定の横拡張（0.5単位）</div>
                   <div id="lblTapSideExtendDetail" class="lbl mono" style="color:var(--dim)">左右 +0.50L</div>
                 </div>
@@ -2113,13 +2334,12 @@
                 <input id="sliderTapColorOpacity" type="range" min="10" max="100" step="5" value="100" style="flex:1" />
                 <span id="lblTapColorOpacity" class="lbl mono" style="min-width:34px;text-align:right">100%</span>
               </div>
-              <label class="form-item"><span class="lbl">配置の制限</span>
-                <select id="selectTapPlacementRole" class="field">
-                  <option value="any">単体で配置できる</option>
-                  <option value="slideOnly">スライドの始点・終点専用</option>
-                  <option value="slideStartOnly">スライドの始点専用</option>
-                  <option value="slideEndOnly">スライドの終点専用</option>
-                </select></label>
+              <div class="form-item"><span class="lbl">置ける所（チェックした所に置けます）</span>
+                <div class="chip-row" style="grid-template-columns:repeat(3,1fr)">
+                  <label class="chip" title="このノーツだけで譜面に置ける"><input id="chkPlaceAlone" type="checkbox" />単体</label>
+                  <label class="chip" title="スライドの始点に合体させられる"><input id="chkPlaceStart" type="checkbox" />スライドの始点</label>
+                  <label class="chip" title="スライドの終点に合体させられる"><input id="chkPlaceEnd" type="checkbox" />スライドの終点</label>
+                </div></div>
               <div class="grid2">
                 <label class="form-item"><span class="lbl">中央マーク</span>
                   <select id="selectTapCenterMark" class="field">
@@ -2135,7 +2355,7 @@
             <!-- スライド専用 -->
             <div id="slideSpecificSettingsBox" class="hidden stack">
               <div class="row">
-                <div>
+                <div class="row-text">
                   <div class="lbl">帯・中継点の横拡張</div>
                   <div id="lblSlideBodyWidthBadge" class="lbl mono" style="color:var(--dim)">+1.5L</div>
                 </div>
@@ -2156,8 +2376,16 @@
                 <div class="lbl" style="margin-bottom:4px">タップ音（合体時は合体したタップの設定）</div>
                 <div class="chip-row">
                   <label class="chip"><input id="chkSlideStartSound" type="checkbox" checked />始点</label>
-                  <label class="chip"><input id="chkSlideRelaySound" type="checkbox" />中継点</label>
+                  <label class="chip" title="粒のある中継点だけ鳴ります（何もなしの中継点は鳴りません）"><input id="chkSlideRelaySound" type="checkbox" />中継点</label>
                   <label class="chip"><input id="chkSlideEndSound" type="checkbox" checked />終点</label>
+                </div>
+              </div>
+              <div>
+                <div class="lbl" style="margin-bottom:4px;white-space:normal">プレイの判定（チェックした所で判定し、コンボが増えます）</div>
+                <div class="chip-row">
+                  <label class="chip" title="始点を叩いた時に判定する"><input id="chkSlideJudgeStart" type="checkbox" checked />始点</label>
+                  <label class="chip" title="押さえている間、8分音符ごとに判定する（その瞬間に押さえていればコンボ、離していればミス。その間に離してもミスにはなりません）"><input id="chkSlideJudgeTicks" type="checkbox" checked />8分ごと</label>
+                  <label class="chip" title="終点で判定する（最後まで押さえていれば OK）"><input id="chkSlideJudgeEnd" type="checkbox" checked />終点</label>
                 </div>
               </div>
 
@@ -2179,6 +2407,13 @@
                     <input id="presetSlideStartExtWidthInput" type="number" min="0" max="12.0" step="0.5" value="1.0" class="field num" style="width:58px" />
                     <span class="lbl">L</span></label>
                 </div>
+                <label class="form-item"><span class="lbl">見た目（合体なしの時）</span>
+                  <select id="selectSlideStartLook" class="field">
+                    <option value="none">なし（帯だけ）</option>
+                    <option value="note">ノーツ</option>
+                    <option value="noteDot">ノーツ＋真ん中の粒</option>
+                    <option value="dot">粒</option>
+                  </select></label>
                 <div class="judge-table">
                   <span></span><span class="jt-head">+ 遅</span><span class="jt-head">− 早</span>
                   <span class="jt-name" style="--c:var(--yellow)">P</span>
@@ -2202,6 +2437,13 @@
                     <input id="presetSlideEndExtWidthInput" type="number" min="0" max="12.0" step="0.5" value="1.0" class="field num" style="width:58px" />
                     <span class="lbl">L</span></label>
                 </div>
+                <label class="form-item"><span class="lbl">見た目（合体なしの時）</span>
+                  <select id="selectSlideEndLook" class="field">
+                    <option value="none">なし（帯だけ）</option>
+                    <option value="note">ノーツ</option>
+                    <option value="noteDot">ノーツ＋真ん中の粒</option>
+                    <option value="dot">粒</option>
+                  </select></label>
                 <div class="judge-table">
                   <span></span><span class="jt-head">+ 遅</span><span class="jt-head">− 早</span>
                   <span class="jt-name" style="--c:var(--yellow)">P</span>
@@ -2293,7 +2535,7 @@
           </div>
         </section>
 
-        <section class="section">
+        <section class="section" data-key="left:layers">
           <div class="section-head">
             <h2 class="section-title">レイヤー</h2>
             <button id="btnAddLayer" type="button" class="btn btn-sm"><i class="fa-solid fa-plus"></i>追加</button>
@@ -2301,7 +2543,7 @@
           <div id="layerListContainer" class="space-y-1 max-h-36 overflow-y-auto pr-1"></div>
         </section>
 
-        <section class="section">
+        <section class="section" data-key="left:templates">
           <div class="section-head">
             <h2 class="section-title">テンプレート</h2>
           </div>
@@ -2358,8 +2600,15 @@
           <button type="button" class="btn btn-icon btn-ghost" data-close-sheet title="閉じる"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
+        <!-- タブ：編集（選んだノーツ）・演出（曲の途中の変化）・確認（チェック・統計）。欄は data-group で振り分ける -->
+        <div id="rightTabs" class="side-tabs" role="tablist" aria-label="パネルの切り替え">
+          <button type="button" role="tab" data-tab="edit" title="選んだノーツの編集・フリックの向き・一括編集"><i class="fa-solid fa-pen-to-square"></i>編集<span id="tabBadgeEdit" class="side-tab-badge hidden"></span></button>
+          <button type="button" role="tab" data-tab="effect" title="テンポ・ソフラン・逆走・レーンの増減など、曲の途中の変化"><i class="fa-solid fa-wand-magic-sparkles"></i>演出</button>
+          <button type="button" role="tab" data-tab="check" title="チェック・判定幅の表示・区間ループ・統計"><i class="fa-solid fa-clipboard-check"></i>確認<span id="tabBadgeCheck" class="side-tab-badge is-bad hidden"></span></button>
+        </div>
+
         <!-- スライドの中継点とカーブ（スライド選択中は常に表示） -->
-        <section id="inspectSlideSection" class="hidden section">
+        <section id="inspectSlideSection" class="hidden section" data-group="edit" data-key="right:slide">
           <div class="section-head">
             <h2 class="section-title">スライドの中継点</h2>
             <button id="btnAddRelayFromInspector" class="btn btn-sm"><i class="fa-solid fa-plus"></i>中継点</button>
@@ -2367,7 +2616,7 @@
           <div id="relayNodesList" class="space-y-1.5 overflow-y-auto pr-1 max-h-64"></div>
         </section>
 
-        <section class="section advanced-ui">
+        <section class="section advanced-ui" data-group="edit" data-key="right:inspector">
           <div class="section-head">
             <h2 class="section-title">選択中のノーツ</h2>
             <button id="btnDeleteSelectedNote" class="hidden btn btn-sm btn-danger"><i class="fa-regular fa-trash-can"></i>削除</button>
@@ -2417,15 +2666,7 @@
           </div>
         </section>
 
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">ソフラン</h2>
-            <button id="btnAddSoflanAtPlayhead" type="button" class="btn btn-sm" title="再生位置にソフランを追加"><i class="fa-solid fa-plus"></i>再生位置に追加</button>
-          </div>
-          <div id="soflanListContainer" class="space-y-1.5 max-h-36 overflow-y-auto pr-1"></div>
-        </section>
-
-        <section class="section">
+        <section class="section" data-group="check" data-key="right:checks">
           <div class="section-head">
             <h2 class="section-title">チェック</h2>
             <span id="badgeErrorCount" class="count-badge is-good">0件</span>
@@ -2433,7 +2674,7 @@
           <div id="errorMonitorList" class="space-y-1.5 max-h-56 overflow-y-auto pr-1"></div>
         </section>
 
-        <section class="section">
+        <section class="section" data-group="check" data-key="right:judge">
           <div class="section-head">
             <h2 class="section-title">判定幅の表示</h2>
           </div>
@@ -2448,7 +2689,7 @@
         <!-- プラグインの欄 -->
         <div id="pluginRightSlot"></div>
 
-        <section class="section" style="border-bottom:0">
+        <section class="section" data-group="check" style="border-bottom:0">
           <div class="stat-grid">
             <div><div class="k">ノーツ</div><div id="statTotalNotes" class="v">0</div></div>
             <div><div class="k">タップ</div><div id="statTapNotes" class="v">0</div></div>
@@ -2551,12 +2792,12 @@
         <button id="btnClosePluginModal" class="btn btn-icon btn-ghost" title="閉じる"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="modal-body stack" style="--gap:12px">
-        <p class="hint" style="margin:0">オン・オフはすぐに反映され、次に開いた時も同じ状態になります。自分で作ったプラグイン（.js）も追加できます（信頼できるものだけを追加してください）。</p>
+        <p class="hint" style="margin:0">オン・オフはすぐに反映され、次に開いた時も同じ状態になります。自分で作ったプラグイン（.js）も追加できます。いくつものプラグインを ZIP にまとめた物も、そのまま追加できます（信頼できるものだけを追加してください）。</p>
         <div id="pluginList" class="stack" style="--gap:6px"></div>
         <div class="row" style="justify-content:flex-start">
-          <label class="btn btn-sm" title="ChartStudio.registerPlugin を呼ぶ .js ファイル">
-            <i class="fa-solid fa-file-circle-plus"></i>ファイルから追加
-            <input id="inputPluginFile" type="file" accept=".js,text/javascript" multiple class="hidden" />
+          <label class="btn btn-sm" title="ChartStudio.registerPlugin を呼ぶ .js ファイル、またはそれをまとめた .zip ファイル（中に index.js があれば、その順番で読み込みます）">
+            <i class="fa-solid fa-file-circle-plus"></i>ファイルから追加（.js / .zip）
+            <input id="inputPluginFile" type="file" accept=".js,.zip,text/javascript,application/zip,application/x-zip-compressed" multiple class="hidden" />
           </label>
           <span id="lblPluginLoadInfo" class="lbl" style="white-space:normal"></span>
         </div>
@@ -2733,7 +2974,6 @@
         dragOffsetLane: 0,
         multiMoveSnapshot: null,
         targetNoteId: null,
-        targetSoflanId: null,
         targetRelayIndex: null
       },
       playback: {
@@ -2757,6 +2997,14 @@
       redoStack: [],
       savedSlots: []
     };
+
+    // 起動した時の画面隠し：プラグインの準備ができて、holdBootCover() した物がすべて外したら外す（10 秒たったら必ず外す）
+    let bootCoverHolds = 0;
+    let bootCoverReady = false;
+    let bootCoverDecided = false; // この起動で、プラグインが setBootCover() を呼んだか
+    const releaseBootCover = () => document.documentElement.classList.remove('cs-boot');
+    const maybeReleaseBootCover = () => { if (bootCoverReady && bootCoverHolds <= 0) releaseBootCover(); };
+    setTimeout(releaseBootCover, 10000);
 
     // プラグインへの通知（handlers はプラグインの api.events.on で登録される）
     const pluginEventHandlers = new Map();
@@ -3021,19 +3269,45 @@
       return Math.min(TOTAL_TICKS, Math.min(m.end, next));
     }
 
-    // ソフランの倍率を時間で積分した「見た目の距離」（ms）。3D プレビューなどの奥行きに使う（ループ再生の折り返しもまたげる）
+    // スクロールの速さ（ソフラン）。ソフランのプラグインが { speedAt(tick, layerId), breakpoints(layerId) } を入れる（無い時はいつも 1 倍）
+    let scrollSpeedProvider = null;
+    let scrollSpeedOwner = null;
+
+    function getEffectiveScrollSpeedAtTick(tick, layerId = state.activeLayerId) {
+      if (!scrollSpeedProvider || TOTAL_TICKS <= 0) return 1.0;
+      const baseTick = ((tick % TOTAL_TICKS) + TOTAL_TICKS) % TOTAL_TICKS;
+      try {
+        const v = Number(scrollSpeedProvider.speedAt(baseTick, layerId || state.activeLayerId || 'layer-1'));
+        return Number.isFinite(v) ? v : 1.0;
+      } catch (e) {
+        return 1.0;
+      }
+    }
+
+    // 速さが変わる Tick（見た目の距離を区間ごとに足すための区切り）
+    function getScrollSpeedBreakpoints(layerId) {
+      if (!scrollSpeedProvider || typeof scrollSpeedProvider.breakpoints !== 'function') return [];
+      try {
+        const list = scrollSpeedProvider.breakpoints(layerId || state.activeLayerId || 'layer-1');
+        return Array.isArray(list) ? list.filter(Number.isFinite) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    // スクロールの速さを時間で積分した「見た目の距離」（ms）。3D プレビューなどの奥行きに使う（ループ再生の折り返しもまたげる）
     function getVisualTimeDistance(startTick, endTick, layerId = state.activeLayerId) {
       if (endTick === startTick || TOTAL_TICKS <= 0) return 0;
       const sign = endTick >= startTick ? 1 : -1;
       const tA = Math.min(startTick, endTick);
       const tB = Math.max(startTick, endTick);
       const total = TOTAL_TICKS;
-      const soflans = getSoflansForLayer(layerId);
+      const breaks = getScrollSpeedBreakpoints(layerId);
       const boundaries = new Set([tA, tB]);
       for (let off = Math.floor(tA / total) * total; off <= tB; off += total) {
         if (off > tA && off < tB) boundaries.add(off);
-        soflans.forEach(s => {
-          const st = s.tick + off;
+        breaks.forEach(bt => {
+          const st = bt + off;
           if (st > tA && st < tB) boundaries.add(st);
         });
         timeMap.tempos.forEach(tp => {
@@ -3056,148 +3330,6 @@
     }
 
     rebuildTimeMap();
-
-    // ==================== SOFLAN (STRICT PER-LAYER & SMOOTH INTERPOLATION, UP TO 100x) ENGINE ====================
-    function normalizeSoflanList(list = state.soflans) {
-      if (!Array.isArray(list)) return [];
-      const fallbackLayerId = state.activeLayerId || (state.layers[0] ? state.layers[0].id : 'layer-1');
-      const sorted = list
-        .map((s, idx) => ({
-          id: s.id || `soflan-${Date.now()}-${idx}`,
-          // 'all' などの旧データも必ず個別レイヤーに紐づける（同じレイヤーのノーツのみに適用）
-          layerId: (s.layerId && s.layerId !== 'all') ? s.layerId : fallbackLayerId,
-          tick: Math.max(0, Math.min(TOTAL_TICKS, Math.round(Number(s.tick) || 0))),
-          // speed が未指定・不正値だと NaN になりスクロール計算全体が壊れるため 1.0 に戻す
-          speed: Math.max(0, Math.min(100, Math.round((Number.isFinite(Number(s.speed)) ? Number(s.speed) : 1.0) * 100) / 100)),
-          interp: s.interp === 'linear' ? 'linear' : 'step' // 'step'=即座に切替, 'linear'=次のソフランへ滑らかに倍率変動
-        }))
-        .sort((a, b) => a.tick - b.tick);
-      return sorted;
-    }
-
-    // 指定したレイヤーIDに一致するソフランのみを返す（他のレイヤーには影響しない）
-    function getSoflansForLayer(layerId = state.activeLayerId) {
-      const targetId = layerId || state.activeLayerId || 'layer-1';
-      return state.soflans.filter(s => s.layerId === targetId);
-    }
-
-    // あるTick・あるレイヤー時点での有効なスクロール倍率を返す（滑らかな線形補間 'linear' 対応）
-    function getEffectiveScrollSpeedAtTick(tick, layerId = state.activeLayerId) {
-      const baseTick = ((tick % TOTAL_TICKS) + TOTAL_TICKS) % TOTAL_TICKS;
-      const applicable = getSoflansForLayer(layerId);
-      if (applicable.length === 0) return 1.0;
-
-      let prevIdx = -1;
-      for (let i = 0; i < applicable.length; i++) {
-        if (applicable[i].tick <= baseTick) prevIdx = i;
-        else break;
-      }
-      if (prevIdx === -1) return 1.0;
-
-      const curSf = applicable[prevIdx];
-      const nextSf = applicable[prevIdx + 1];
-      // 「次へ滑らかに変化 (linear)」が選択されており、同レイヤー内に次のソフランが存在する場合は線形補間する
-      if (curSf.interp === 'linear' && nextSf && nextSf.tick > curSf.tick) {
-        const ratio = (baseTick - curSf.tick) / (nextSf.tick - curSf.tick);
-        return curSf.speed + (nextSf.speed - curSf.speed) * ratio;
-      }
-      return curSf.speed;
-    }
-
-    // startTick から endTick までの「レイヤー別ソフラン倍率を積分した視覚Tick距離」を算出する
-    // 台形公式 (segStart と segEnd の平均速度 × 区間幅) により、一定区間も線形補間区間も正確に積分される
-    function getVisualTickDistance(startTick, endTick, layerId = state.activeLayerId) {
-      if (endTick === startTick) return 0;
-      const sign = endTick >= startTick ? 1 : -1;
-      let tA = Math.min(startTick, endTick);
-      let tB = Math.max(startTick, endTick);
-
-      const applicable = getSoflansForLayer(layerId);
-      const boundaries = new Set([tA, tB]);
-      for (let loopOffset = 0; loopOffset <= TOTAL_TICKS; loopOffset += TOTAL_TICKS) {
-        boundaries.add(loopOffset);
-        applicable.forEach(s => {
-          const st = s.tick + loopOffset;
-          if (st > tA && st < tB) boundaries.add(st);
-        });
-      }
-      const pts = Array.from(boundaries).filter(t => t >= tA && t <= tB).sort((a, b) => a - b);
-      let visualTicks = 0;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const segStart = pts[i];
-        const segEnd = pts[i + 1];
-        const eps = 1e-4;
-        const spdStart = getEffectiveScrollSpeedAtTick(segStart + eps, layerId);
-        const spdEnd = getEffectiveScrollSpeedAtTick(segEnd - eps, layerId);
-        visualTicks += (segEnd - segStart) * ((spdStart + spdEnd) / 2);
-      }
-      return visualTicks * sign;
-    }
-
-    function renderSoflanListUI() {
-      const container = document.getElementById('soflanListContainer');
-      if (!container) return;
-      state.soflans = normalizeSoflanList(state.soflans);
-      if (state.soflans.length === 0) {
-        container.innerHTML = `<div class="text-[10px] text-slate-500 text-center py-1.5">ソフランなし（全区間 1.00x 標準速度）</div>`;
-        return;
-      }
-      container.innerHTML = '';
-      state.soflans.forEach((sf, idx) => {
-        const row = document.createElement('div');
-        const isCurrentLayer = sf.layerId === state.activeLayerId;
-        row.className = `p-1.5 rounded bg-slate-950 border ${isCurrentLayer ? 'border-fuchsia-500/50' : 'border-slate-800 opacity-75'} flex flex-col gap-1 text-[10px]`;
-        const layerOpts = state.layers.map(ly => `<option value="${escapeHtml(ly.id)}" ${sf.layerId === ly.id ? 'selected' : ''}>${escapeHtml(ly.name)}</option>`).join('');
-        row.innerHTML = `
-          <div class="flex items-center justify-between gap-1">
-            <div class="flex items-center gap-1">
-              <span class="text-fuchsia-300 font-bold mono">#${idx + 1}</span>
-              <input type="number" min="0" max="${TOTAL_TICKS}" step="1" value="${sf.tick}" data-sf-tick class="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 mono text-cyan-300 text-right" title="開始Tick" />
-              <span class="text-slate-400">t</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="text-fuchsia-300 font-bold mono">×</span>
-              <input type="number" min="0" max="100" step="0.1" value="${sf.speed}" data-sf-spd class="w-14 bg-slate-900 border border-fuchsia-500/50 rounded px-1 py-0.5 mono font-bold text-fuchsia-200 text-right" title="スクロール倍率 (0〜100x)" />
-              <button type="button" data-sf-del class="px-1.5 py-0.5 rounded bg-rose-600/20 hover:bg-rose-600/40 text-rose-300">×</button>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-1">
-            <select data-sf-layer class="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[9px] text-indigo-200" title="適用先レイヤー（このレイヤーのノーツにのみ適用）">${layerOpts}</select>
-            <select data-sf-interp class="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[9px] text-fuchsia-200" title="倍率の変化方式">
-              <option value="step" ${sf.interp !== 'linear' ? 'selected' : ''}>即座に切替 (一定)</option>
-              <option value="linear" ${sf.interp === 'linear' ? 'selected' : ''}>次へ滑らかに変化</option>
-            </select>
-          </div>
-        `;
-        row.querySelector(`[data-sf-tick]`).addEventListener('change', e => {
-          pushHistory();
-          sf.tick = Math.max(0, Math.min(TOTAL_TICKS, parseInt(e.target.value, 10) || 0));
-          state.soflans = normalizeSoflanList(state.soflans);
-          syncAllUI();
-        });
-        row.querySelector(`[data-sf-spd]`).addEventListener('input', e => {
-          sf.speed = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-          renderChart();
-          saveToLocalStorage();
-        });
-        row.querySelector(`[data-sf-layer]`).addEventListener('change', e => {
-          sf.layerId = e.target.value;
-          renderChart();
-          saveToLocalStorage();
-        });
-        row.querySelector(`[data-sf-interp]`).addEventListener('change', e => {
-          sf.interp = e.target.value;
-          renderChart();
-          saveToLocalStorage();
-        });
-        row.querySelector(`[data-sf-del]`).addEventListener('click', () => {
-          pushHistory();
-          state.soflans = state.soflans.filter(item => item.id !== sf.id);
-          syncAllUI();
-        });
-        container.appendChild(row);
-      });
-    }
 
     const ALLOWED_CURVES = ['linear', 'easeIn', 'easeOut'];
     const CURVE_LABELS = {
@@ -3330,6 +3462,27 @@
       };
     }
 
+    // タップのノーツ設定を置ける所：単体・スライドの始点・スライドの終点（チェックで選ぶ）。
+    // 以前の tapPlacementRole（4 つから選ぶ：any / slideOnly / slideStartOnly / slideEndOnly）からも読む
+    function tapPlaceFlags(tp) {
+      if (!tp) return { alone: true, start: true, end: true };
+      const role = ['any', 'slideOnly', 'slideStartOnly', 'slideEndOnly'].includes(tp.tapPlacementRole) ? tp.tapPlacementRole : 'any';
+      let alone = typeof tp.placeAlone === 'boolean' ? tp.placeAlone : role === 'any';
+      const start = typeof tp.placeAsStart === 'boolean' ? tp.placeAsStart : role !== 'slideEndOnly';
+      const end = typeof tp.placeAsEnd === 'boolean' ? tp.placeAsEnd : role !== 'slideStartOnly';
+      if (!alone && !start && !end) alone = true; // どこにも置けない設定にはしない
+      return { alone, start, end };
+    }
+    function canPlaceAlone(tp) { return tapPlaceFlags(tp).alone; }
+    function canBeSlideStart(tp) { return tapPlaceFlags(tp).start; }
+    function canBeSlideEnd(tp) { return tapPlaceFlags(tp).end; }
+    // 以前の版でも読めるように、近い tapPlacementRole も残す
+    function placementRoleOf(f) {
+      if (f.alone) return 'any';
+      if (f.start && f.end) return 'slideOnly';
+      return f.start ? 'slideStartOnly' : 'slideEndOnly';
+    }
+
     function normalizePreset(p) {
       // Backwards compatibility with older judgeWidthExtend (per-side) vs judgeWidthExtTotal
       const legacyExtTotal = p.judgeWidthExtend !== undefined ? snapHalfLane(p.judgeWidthExtend * 2, 1.0) : 1.0;
@@ -3373,12 +3526,12 @@
       const mergeableStartTapIds = (Array.isArray(p.mergeableStartTapIds) ? p.mergeableStartTapIds : legacyMergeIds)
         .filter(id => {
           const tp = allTapPresets.find(t => t.id === id);
-          return !tp || tp.tapPlacementRole !== 'slideEndOnly';
+          return !tp || canBeSlideStart(tp);
         });
       const mergeableEndTapIds = (Array.isArray(p.mergeableEndTapIds) ? p.mergeableEndTapIds : legacyMergeIds)
         .filter(id => {
           const tp = allTapPresets.find(t => t.id === id);
-          return !tp || tp.tapPlacementRole !== 'slideStartOnly';
+          return !tp || canBeSlideEnd(tp);
         });
 
       const normalizeRuleList = (rules, fallback) => Array.isArray(rules)
@@ -3412,8 +3565,8 @@
       const colorOpacity = Number.isFinite(Number(p.colorOpacity))
         ? Math.max(0.1, Math.min(1.0, Number(p.colorOpacity)))
         : 1.0;
-      const allowedRoles = ['any', 'slideOnly', 'slideStartOnly', 'slideEndOnly'];
-      const tapPlacementRole = allowedRoles.includes(p.tapPlacementRole) ? p.tapPlacementRole : 'any';
+      const placeFlags = tapPlaceFlags(p);
+      const tapPlacementRole = placementRoleOf(placeFlags);
 
       const allowedCenterMarks = ['none', 'flick', 'dot'];
       const tapCenterMark = allowedCenterMarks.includes(p.tapCenterMark) ? p.tapCenterMark : 'none';
@@ -3427,12 +3580,19 @@
       const slideStartSound = p.slideStartSound !== undefined ? Boolean(p.slideStartSound) : true;
       const slideRelaySound = p.slideRelaySound !== undefined ? Boolean(p.slideRelaySound) : false;
       const slideEndSound = p.slideEndSound !== undefined ? Boolean(p.slideEndSound) : true;
+      // 合体なしの時の始点・終点の見た目：なし（帯だけ。既定）／ノーツ／ノーツ＋真ん中の粒／粒
+      const SLIDE_END_LOOKS = ['none', 'note', 'noteDot', 'dot'];
+      const slideStartLook = SLIDE_END_LOOKS.includes(p.slideStartLook) ? p.slideStartLook : 'none';
+      const slideEndLook = SLIDE_END_LOOKS.includes(p.slideEndLook) ? p.slideEndLook : 'none';
 
       return {
         ...p,
         codeId: cleanCodeId,
         colorOpacity,
         tapPlacementRole,
+        placeAlone: placeFlags.alone,
+        placeAsStart: placeFlags.start,
+        placeAsEnd: placeFlags.end,
         tapCenterMark,
         playSound,
         slideRelayStyle,
@@ -3446,6 +3606,12 @@
         slideEndWidthExtTotal,
         slideGradientFade: Boolean(p.slideGradientFade),
         slideColors: p.type === 'slide' ? slideColors : undefined,
+        slideStartLook,
+        slideEndLook,
+        // プレイの判定：始点・8分ごと（押さえている間）・終点
+        slideJudgeStart: p.slideJudgeStart !== false,
+        slideJudgeTicks: p.slideJudgeTicks !== false,
+        slideJudgeEnd: p.slideJudgeEnd !== false,
         mergeableTapPresetIds: Array.from(new Set([...mergeableStartTapIds, ...mergeableEndTapIds])),
         mergeableStartTapIds,
         mergeableEndTapIds,
@@ -3473,20 +3639,33 @@
       const validIds = sourceIds.filter(id => {
         const tp = state.presets.find(p => p.id === id && p.type === 'tap');
         if (!tp) return false;
-        if (role === 'start' && tp.tapPlacementRole === 'slideEndOnly') return false;
-        if (role === 'end' && tp.tapPlacementRole === 'slideStartOnly') return false;
+        if (role === 'start' && !canBeSlideStart(tp)) return false;
+        if (role === 'end' && !canBeSlideEnd(tp)) return false;
         return true;
       });
       return [...validIds, 'none'];
     }
 
+    // フリックの矢印の大きさ（ノーツの幅で変える。3 レーンの幅で 1 倍。3D・画像の書き出しも同じ式）
+    function flickArrowScale(widthLanes) {
+      const w = Number(widthLanes);
+      if (!Number.isFinite(w) || w <= 0) return 1;
+      return Math.max(0.55, Math.min(1.9, Math.pow(w / DEFAULT_NOTE_WIDTH, 0.7)));
+    }
     // スライドに選ばれている色（ノーツ設定の色のバリエーションから）
     function getSlideNoteColor(slideNote, slidePreset) {
       const colors = slidePreset?.slideColors;
       const idx = Number.isInteger(slideNote?.colorIndex) ? slideNote.colorIndex : 0;
-      return (Array.isArray(colors) && colors[idx]) || slidePreset?.color || '#5fae84';
+      // 1 つ目（基本の色）は、いつもノーツ設定の色
+      if (idx > 0 && Array.isArray(colors) && colors[idx]) return colors[idx];
+      return slidePreset?.color || (Array.isArray(colors) && colors[0]) || '#5fae84';
     }
 
+    // 合体なしの始点・終点の見た目 → 描き方（'none' 何も描かない／'note' ノーツ／'dot' 粒）
+    function lookToRelayStyle(look) {
+      if (look === 'dot') return 'dot';
+      return look === 'note' || look === 'noteDot' ? 'note' : 'none';
+    }
     // スライドの各ポイント（始点・中継点・終点）の有効な色・透明度・マーク・見た目・音・判定幅・エラー条件を返す
     function getSlideNodeEffectiveSpec(slidePreset, pointIndex, totalPoints, slideNote = null) {
       const normSlide = normalizePreset(slidePreset);
@@ -3521,8 +3700,9 @@
           mergedTapName: null,
           color: getSlideNoteColor(slideNote, normSlide),
           colorOpacity: 1.0,
-          centerMark: 'none',
-          relayStyle: 'none', // 合体なし時は始点のノーツ枠を非表示にする
+          // 合体なしの時の見た目はノーツ設定で選ぶ（既定は「なし」＝帯だけ）
+          centerMark: normSlide.slideStartLook === 'noteDot' ? 'dot' : 'none',
+          relayStyle: lookToRelayStyle(normSlide.slideStartLook),
           playSound: normSlide.slideStartSound ?? true,
           judgment: normSlide.slideStartJudgment,
           horizExtTotal: normSlide.slideStartWidthExtTotal,
@@ -3559,8 +3739,8 @@
           mergedTapName: null,
           color: getSlideNoteColor(slideNote, normSlide),
           colorOpacity: 1.0,
-          centerMark: 'none',
-          relayStyle: 'none', // 合体なし時は終点のノーツ枠を非表示にする
+          centerMark: normSlide.slideEndLook === 'noteDot' ? 'dot' : 'none',
+          relayStyle: lookToRelayStyle(normSlide.slideEndLook),
           playSound: normSlide.slideEndSound ?? true,
           judgment: normSlide.slideEndJudgment,
           horizExtTotal: normSlide.slideEndWidthExtTotal,
@@ -3632,6 +3812,8 @@
             judgment: normalizeJudgment(preset.judgment),
             mergedTapName: null,
             effectiveRules: preset.errorRules || [],
+            // このノーツに付く条件の一覧の名前（条件式の入力画面で「当てはまるノーツ」を数える時に使う）
+            ruleOwners: [`${preset.id}:errorRules`],
             // どのノーツ設定のどの一覧の条件か（編集画面での「該当 N件」表示や、読めない式の案内に使う）
             ruleEntries: (preset.errorRules || []).map(rule => ({ rule, owner: `${preset.id}:errorRules` }))
           });
@@ -3673,6 +3855,7 @@
               judgment: normalizeJudgment(spec.judgment),
               mergedTapName: spec.isMerged ? spec.mergedTapName : null,
               effectiveRules: combinedRules,
+              ruleOwners: [...((isStart || isEnd) && spec.rulesOwner ? [spec.rulesOwner] : []), ...(!isEnd ? [`${preset.id}:slideHoldErrorRules`] : [])],
               ruleEntries
             });
           });
@@ -5544,6 +5727,12 @@
         tabBadge.textContent = count > 99 ? '99+' : String(count);
         tabBadge.classList.toggle('hidden', count === 0);
       }
+      // 右のパネルの「確認」のタブにも
+      const checkBadge = document.getElementById('tabBadgeCheck');
+      if (checkBadge) {
+        checkBadge.textContent = count > 99 ? '99+' : String(count);
+        checkBadge.classList.toggle('hidden', count === 0);
+      }
 
       list.innerHTML = '';
       // 構文エラーで使われていない条件式（気づけるように一番上に出す）
@@ -5643,6 +5832,31 @@
     // レーンを減らした時にはみ出したノーツを薄く表示するため、譜面の左右に「レーン外」の領域を確保する
     let outsideLanesLeft = 0;
     let outsideLanesRight = 0;
+    // プラグインが足す、左右のレーンの外側のレーン（本数）。そこにもノーツを置ける
+    let pluginOuterLanes = 0;
+    const minPlaceLane = () => 1 - pluginOuterLanes;
+    const maxPlaceLane = () => NUM_LANES + pluginOuterLanes;
+    // レーンの外側のレーンに置いたノーツは、ほとんど普通の濃さで描く（それより外にはみ出した物は薄く）
+    function outsideAlphaOf(note) {
+      if (pluginOuterLanes <= 0 || !note) return OUTSIDE_NOTE_ALPHA;
+      const pts = note.type === 'slide' ? (note.points || []) : [note];
+      return pts.every(p => p.lane >= minPlaceLane() && p.lane + p.width - 1 <= maxPlaceLane()) ? 0.85 : OUTSIDE_NOTE_ALPHA;
+    }
+    // フリックの矢印の向き（度。上が 0、右回り）
+    const FLICK_DIR_ANGLES = { up: 0, upRight: 45, right: 90, downRight: 135, down: 180, downLeft: 225, left: 270, upLeft: 315 };
+    const FLICK_DIR_MIRROR = { upRight: 'upLeft', upLeft: 'upRight', right: 'left', left: 'right', downRight: 'downLeft', downLeft: 'downRight' };
+    const mirrorFlickDir = (d) => FLICK_DIR_MIRROR[d] || d;
+    // ノーツの描き方を差し替えるプラグイン（ノーツのデザインなど）
+    let pluginNoteDrawer = null;
+    function drawNoteByPlugin(info) {
+      if (!pluginNoteDrawer) return false;
+      try {
+        return pluginNoteDrawer.fn(info) === true;
+      } catch (e) {
+        console.error('[plugin] note drawer', e);
+        return false;
+      }
+    }
 
     function isNoteOutsideLanes(note) {
       if (!note) return false;
@@ -5661,8 +5875,8 @@
           if (p.lane + p.width - 1 > maxRight) maxRight = p.lane + p.width - 1;
         });
       });
-      const left = Math.max(0, 1 - minLane);
-      const right = Math.max(0, maxRight - NUM_LANES);
+      const left = Math.max(pluginOuterLanes, 1 - minLane);
+      const right = Math.max(pluginOuterLanes, maxRight - NUM_LANES);
       const changed = left !== outsideLanesLeft || right !== outsideLanesRight;
       outsideLanesLeft = left;
       outsideLanesRight = right;
@@ -5712,7 +5926,7 @@
     function xToLane(x) {
       const relX = x - getLaneAreaLeft();
       const lane = Math.floor(relX / state.laneWidthPx) + 1;
-      return Math.max(1, Math.min(NUM_LANES, lane));
+      return Math.max(minPlaceLane(), Math.min(maxPlaceLane(), lane));
     }
 
     // Audio Synth
@@ -6031,10 +6245,7 @@
 
       state.bottomToTop = true; // 常に下→上（標準）に固定
 
-      document.querySelectorAll('#gridButtonsContainer .grid-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.grid, 10) === state.gridDivision);
-      });
-      document.getElementById('lblGridTickInfo').textContent = `1/${state.gridDivision} · ${getSnapTicks()}t`;
+      syncGridControl();
 
       document.getElementById('sliderVZoom').value = measureHeightToSlider(state.measureHeightPx);
       document.getElementById('lblVZoom').textContent = `${state.measureHeightPx}px`;
@@ -6082,7 +6293,7 @@
         const firstLyId = (parsed.layers && parsed.layers[0]?.id) || 'layer-1';
         state.notes.forEach(n => { if (!n.layerId) n.layerId = firstLyId; });
       }
-      state.soflans = Array.isArray(parsed.soflans) ? normalizeSoflanList(JSON.parse(JSON.stringify(parsed.soflans))) : [];
+      state.soflans = Array.isArray(parsed.soflans) ? JSON.parse(JSON.stringify(parsed.soflans)) : [];
       if (Array.isArray(parsed.layers) && parsed.layers.length > 0) {
         state.layers = JSON.parse(JSON.stringify(parsed.layers));
       } else if (!state.layers || state.layers.length === 0) {
@@ -6241,7 +6452,7 @@
 
     function restoreHistorySnapshot(snapObj) {
       state.notes = snapObj.notes || [];
-      state.soflans = normalizeSoflanList(snapObj.soflans || []);
+      state.soflans = Array.isArray(snapObj.soflans) ? snapObj.soflans : [];
       state.presets = (snapObj.presets || state.presets).map(normalizePreset);
       state.bpm = snapObj.bpm || 160;
       document.getElementById('inputBpm').value = state.bpm;
@@ -6385,7 +6596,6 @@
         pendingFrameTasks.clear();
         if (tasksToRun.has('errors')) runAllErrorChecks();
         if (tasksToRun.has('inspector')) syncInspectorValues();
-        if (tasksToRun.has('soflanList')) renderSoflanListUI();
         renderChart();
       });
     }
@@ -6658,16 +6868,25 @@
       }
 
       // 2Dキャンバス用：ノーツ中央に「^ (フリック：ノーツから上に少し飛び出る位置)」または「・ (粒)」（ノーツ色＋白縁取り）を描画するヘルパー
-      const draw2DCenterMark = (centerX, centerY, markType, fillColor = '#06b6d4', opacity = 1.0, noteH = 14) => {
+      const draw2DCenterMark = (centerX, centerY, markType, fillColor = '#06b6d4', opacity = 1.0, noteH = 14, flickDir = null, widthLanes = DEFAULT_NOTE_WIDTH) => {
         if (!markType || markType === 'none') return;
         ctx.save();
         const rgbaFill = hexToRgba(fillColor, opacity);
         if (markType === 'flick') {
+          // 向きの付いたフリックは、ノーツの真ん中を中心に矢印を回す
+          const ang = FLICK_DIR_ANGLES[flickDir] || 0;
+          if (ang) {
+            ctx.translate(centerX, centerY);
+            ctx.rotate((ang * Math.PI) / 180);
+            ctx.translate(-centerX, -centerY);
+          }
           // ノーツの上端(centerY - noteH * 0.5)から先端が少し上に飛び出るようにY位置を上へ微調整
-          const halfW = Math.max(9, noteH * 0.85);
-          const topY = centerY - noteH * 0.95; // 先端がノーツ上端より約0.45*noteH上へ飛び出る
+          // 矢印の大きさはノーツの幅で変える（3 レーンの幅で今までと同じ大きさ）
+          const k = flickArrowScale(widthLanes);
+          const halfW = Math.max(9, noteH * 0.85) * k;
+          const topY = centerY - noteH * 0.5 - noteH * 0.45 * k; // 先端がノーツ上端より約0.45*noteH（×大きさ）上へ飛び出る
           const botY = centerY + noteH * 0.12;
-          const thickness = Math.max(4.5, noteH * 0.42);
+          const thickness = Math.max(4.5, noteH * 0.42) * (0.6 + 0.4 * k);
           ctx.beginPath();
           ctx.moveTo(centerX - halfW, botY);
           ctx.lineTo(centerX, topY);
@@ -6716,7 +6935,7 @@
           const minDraftTick = lastPt ? lastPt.tick + MIN_SLIDE_POINT_GAP_TICKS : 0;
           pts.push({
             tick: Math.max(minDraftTick, state.pointer.hoverTick),
-            lane: Math.max(1, Math.min(NUM_LANES - w + 1, state.pointer.hoverLane)),
+            lane: Math.max(minPlaceLane(), Math.min(maxPlaceLane() - w + 1, state.pointer.hoverLane)),
             width: w,
             curve: 'linear',
             isGhost: true
@@ -6726,7 +6945,7 @@
         preparedSlides.push({ slide, preset, color, isSelected, pts, faded });
 
         ctx.save();
-        if (faded) ctx.globalAlpha = OUTSIDE_NOTE_ALPHA;
+        if (faded) ctx.globalAlpha = outsideAlphaOf(slide);
         // 区間ごとに閉じた図形を描くと中継点に横線が出るので、スライド全体を1本の帯として塗り、線は左右の縁と両端だけ引く
         const segments = [];
         for (let i = 0; i < pts.length - 1; i++) {
@@ -6779,23 +6998,7 @@
         drawBand(segments.filter(sg => !sg.ghost), false);
         drawBand(segments.filter(sg => sg.ghost), true);
 
-        // 加速・減速の区間（と選択中のスライド）には区間の真ん中にカーブの名前を出す
-        segments.forEach(({ leftPts, rightPts, curveMode }) => {
-          if (curveMode === 'linear' && !isSelected) return;
-          const midIdx = Math.floor(leftPts.length / 2);
-          const midX = (leftPts[midIdx].x + rightPts[midIdx].x) / 2;
-          const midY = leftPts[midIdx].y;
-          ctx.save();
-          ctx.fillStyle = 'rgba(17, 17, 19, 0.85)';
-          const label = CURVE_LABELS[curveMode];
-          ctx.font = '600 9px "IBM Plex Sans JP", sans-serif';
-          const bw = ctx.measureText(label).width + 8;
-          ctx.fillRect(midX - bw / 2, midY - 6, bw, 12);
-          ctx.fillStyle = curveMode === 'linear' ? '#a29e97' : '#a8c59d';
-          ctx.textAlign = 'center';
-          ctx.fillText(label, midX, midY + 3);
-          ctx.restore();
-        });
+        // （区間のカーブの名前「加速・減速」は、帯の上には出さない。右のパネルの中継点の一覧で見られる）
         ctx.restore();
       }
 
@@ -6811,17 +7014,24 @@
 
           ctx.save();
           if (pt.isGhost) ctx.globalAlpha = 0.6;
-          if (faded) ctx.globalAlpha = OUTSIDE_NOTE_ALPHA;
+          if (faded) ctx.globalAlpha = outsideAlphaOf(slide);
 
-          if (spec.role === 'relay' && spec.relayStyle === 'dot') {
-            // 中継点＝「粒（・）」だけを描く（まわりに枠線は出さない）
-            ctx.fillStyle = hexToRgba(spec.color, spec.colorOpacity ?? 1.0);
-            ctx.strokeStyle = isNodeSelected ? SELECT_COLOR : '#ffffff';
-            ctx.lineWidth = isNodeSelected ? 2.5 : 2;
-            ctx.beginPath();
-            ctx.arc(x + w / 2, y, 7.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+          if (spec.relayStyle === 'dot') {
+            // 粒（・）だけを描く（中継点の粒と、見た目を「粒」にした合体なしの始点・終点。まわりに枠線は出さない）
+            const drawnDot = drawNoteByPlugin({
+              ctx, kind: 'relayDot', role: spec.role, note: slide, preset, presetId: slide.presetId, pointIndex: idx, widthLanes: pt.width,
+              x: x + 2, y, w: Math.max(6, w - 4), h: nodeH, color: spec.color, opacity: spec.colorOpacity ?? 1.0,
+              mark: 'dot', flickDir: null, selected: isNodeSelected, selectColor: SELECT_COLOR
+            });
+            if (!drawnDot) {
+              ctx.fillStyle = hexToRgba(spec.color, spec.colorOpacity ?? 1.0);
+              ctx.strokeStyle = isNodeSelected ? SELECT_COLOR : '#ffffff';
+              ctx.lineWidth = isNodeSelected ? 2.5 : 2;
+              ctx.beginPath();
+              ctx.arc(x + w / 2, y, 7.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            }
           } else if (spec.role === 'relay') {
             // 中継点の「何もなし」：何も描かない。選んでいる時だけ、位置が分かるよう小さなひし形を出す
             if (isNodeSelected) {
@@ -6847,16 +7057,26 @@
             }
           } else {
             // 通常のノーツバー表示（合体時も黄色枠や二重白枠を付けず、通常のタップと同じ白枠1本で描画）
-            ctx.fillStyle = hexToRgba(spec.color, spec.colorOpacity ?? 1.0);
-            ctx.strokeStyle = isNodeSelected ? SELECT_COLOR : '#ffffff';
-            ctx.lineWidth = isNodeSelected ? 2.5 : 1.5;
+            const mergedTapId = spec.isMerged ? (idx === 0 ? (slide.startTapPresetId ?? preset.startTapPresetId) : (slide.endTapPresetId ?? preset.endTapPresetId)) : null;
+            // 向きを付けたフリックの終点は、印が無くても矢印を出す
+            const nodeMark = slide.flickDir && spec.role === 'end' ? 'flick' : spec.centerMark;
+            const drawnNode = drawNoteByPlugin({
+              ctx, kind: 'node', role: spec.role, note: slide, preset, presetId: mergedTapId || slide.presetId, pointIndex: idx, widthLanes: pt.width,
+              x: x + 2, y, w: Math.max(6, w - 4), h: nodeH, color: spec.color, opacity: spec.colorOpacity ?? 1.0,
+              mark: nodeMark, flickDir: slide.flickDir || null, selected: isNodeSelected, selectColor: SELECT_COLOR
+            });
+            if (!drawnNode) {
+              ctx.fillStyle = hexToRgba(spec.color, spec.colorOpacity ?? 1.0);
+              ctx.strokeStyle = isNodeSelected ? SELECT_COLOR : '#ffffff';
+              ctx.lineWidth = isNodeSelected ? 2.5 : 1.5;
 
-            ctx.beginPath();
-            ctx.roundRect(x + 2, y - nodeH / 2, Math.max(6, w - 4), nodeH, 5);
-            ctx.fill();
-            ctx.stroke();
+              ctx.beginPath();
+              ctx.roundRect(x + 2, y - nodeH / 2, Math.max(6, w - 4), nodeH, 5);
+              ctx.fill();
+              ctx.stroke();
 
-            draw2DCenterMark(x + w / 2, y, spec.centerMark, spec.color, spec.colorOpacity ?? 1.0, nodeH);
+              draw2DCenterMark(x + w / 2, y, nodeMark, spec.color, spec.colorOpacity ?? 1.0, nodeH, slide.flickDir, pt.width);
+            }
           }
 
           if (!pt.isGhost && spec.role !== 'relay' && (isSelected || state.currentTool === 'select')) {
@@ -6880,17 +7100,24 @@
         const noteH = 14;
 
         ctx.save();
-        if (isNoteOutsideLanes(note)) ctx.globalAlpha = OUTSIDE_NOTE_ALPHA;
-        ctx.fillStyle = hexToRgba(color, preset.colorOpacity ?? 1.0);
-        ctx.strokeStyle = isSelected ? SELECT_COLOR : '#ffffff';
-        ctx.lineWidth = isSelected ? 2.5 : 1.5;
+        if (isNoteOutsideLanes(note)) ctx.globalAlpha = outsideAlphaOf(note);
+        const drawnTap = drawNoteByPlugin({
+          ctx, kind: 'tap', role: 'tap', note, preset, presetId: note.presetId, pointIndex: null, widthLanes: note.width,
+          x: x + 2, y, w: Math.max(6, w - 4), h: noteH, color, opacity: preset.colorOpacity ?? 1.0,
+          mark: note.flickDir ? 'flick' : preset.tapCenterMark, flickDir: note.flickDir || null, selected: isSelected, selectColor: SELECT_COLOR
+        });
+        if (!drawnTap) {
+          ctx.fillStyle = hexToRgba(color, preset.colorOpacity ?? 1.0);
+          ctx.strokeStyle = isSelected ? SELECT_COLOR : '#ffffff';
+          ctx.lineWidth = isSelected ? 2.5 : 1.5;
 
-        ctx.beginPath();
-        ctx.roundRect(x + 2, y - noteH / 2, Math.max(6, w - 4), noteH, 5);
-        ctx.fill();
-        ctx.stroke();
+          ctx.beginPath();
+          ctx.roundRect(x + 2, y - noteH / 2, Math.max(6, w - 4), noteH, 5);
+          ctx.fill();
+          ctx.stroke();
 
-        draw2DCenterMark(x + w / 2, y, preset.tapCenterMark, color, preset.colorOpacity ?? 1.0, noteH);
+          draw2DCenterMark(x + w / 2, y, note.flickDir ? 'flick' : preset.tapCenterMark, color, preset.colorOpacity ?? 1.0, noteH, note.flickDir, note.width);
+        }
 
         if (isSelected || state.currentTool === 'select') {
           ctx.fillStyle = SELECT_COLOR;
@@ -6948,7 +7175,7 @@
       if (!state.pointer.isDown && state.currentTool === 'place' && !state.activeSlideDraft && !state.hoverTarget && state.pointer.hoverLane !== null && state.pointer.hoverTick !== null) {
         const preset = normalizePreset(getPresetById(state.selectedPresetId));
         if (preset) {
-          const ghostLane = Math.max(1, Math.min(NUM_LANES - DEFAULT_NOTE_WIDTH + 1, state.pointer.hoverLane));
+          const ghostLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - DEFAULT_NOTE_WIDTH + 1, state.pointer.hoverLane));
           const gx = laneToX(ghostLane);
           const gw = DEFAULT_NOTE_WIDTH * state.laneWidthPx;
           const gy = tickToY(state.pointer.hoverTick);
@@ -6981,46 +7208,6 @@
         ctx.restore();
       }
 
-      // 6.9 Draw Soflan (Scroll Speed Change) Lines & Left Ruler Handle Badges (赤い再生バーと同じ左端スタイル)
-      if (state.soflans && state.soflans.length > 0) {
-        ctx.save();
-        state.soflans.forEach(sf => {
-          // 別レイヤー専用のソフランは、そのレイヤーが非表示なら非表示、別レイヤー選択中なら薄く表示
-          if (sf.layerId && sf.layerId !== 'all') {
-            const ly = getLayerById(sf.layerId);
-            if (ly.visible === false) return;
-            ctx.globalAlpha = sf.layerId === state.activeLayerId ? 1.0 : 0.45;
-          } else {
-            ctx.globalAlpha = 1.0;
-          }
-
-          const sy = tickToY(sf.tick);
-          const badgeW = RULER_LEFT_WIDTH - 10;
-          ctx.strokeStyle = '#b98ab9';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([6, 4]);
-          ctx.beginPath();
-          ctx.moveTo(4, sy);
-          ctx.lineTo(chartRight + 8, sy);
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // 再生バーと同じ左ルーラー位置に倍率のラベル
-          ctx.fillStyle = '#5c425c';
-          ctx.beginPath();
-          ctx.roundRect(4, sy - 10, badgeW, 20, 4);
-          ctx.fill();
-
-          ctx.fillStyle = '#f2e6f2';
-          ctx.font = '600 10px "IBM Plex Mono", monospace';
-          ctx.textAlign = 'center';
-          const spdStr = Number(sf.speed) % 1 === 0 ? Number(sf.speed).toFixed(1) : Number(sf.speed).toString();
-          const suffix = sf.interp === 'linear' ? '〜' : '';
-          ctx.fillText(`×${spdStr}${suffix}`, 4 + badgeW / 2, sy + 3.5);
-        });
-        ctx.restore();
-      }
-
       // プラグインの描画（ループ範囲・テンポの印など、ノーツの上）
       if (layerInfo) runChartLayers('overlay', layerInfo);
 
@@ -7046,7 +7233,8 @@
       ctx.fillStyle = '#ffffff';
       ctx.font = '600 10px "IBM Plex Mono", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(`${Math.round(state.playback.currentTick)}t`, 4 + playBadgeW / 2, playY + 3.5);
+      // 再生位置は秒で出す（テンポが変わっても曲の時間どおり）
+      ctx.fillText(`${(ticksToMs(state.playback.currentTick) / 1000).toFixed(2)}s`, 4 + playBadgeW / 2, playY + 3.5);
 
       ctx.fillStyle = '#e5534b';
       ctx.beginPath();
@@ -7151,8 +7339,7 @@
           : (relayIndex === null ? 'クリックで中継点を追加'
             : (idx === 0 ? 'クリックでカーブを切替（Shift+クリックで合体ノーツ）'
               : (idx === note.points.length - 1 ? 'クリックで合体ノーツを切替' : 'クリックでカーブを切替'))),
-        erase: 'クリックで削除',
-        soflan: ''
+        erase: 'クリックで削除'
       }[state.currentTool] || '';
 
       return `
@@ -7252,18 +7439,62 @@
           }
         }
       }
-      // ソフランラインのヒット判定（上の「ソフラン」ボタンまたは「消しゴム」選択時のみ、かつ現在レイヤーのソフランのみ対象）
-      if ((state.currentTool === 'soflan' || state.currentTool === 'erase') && state.soflans && state.soflans.length > 0) {
-        for (let i = state.soflans.length - 1; i >= 0; i--) {
-          const sf = state.soflans[i];
-          if (sf.layerId !== state.activeLayerId) continue;
-          const sy = tickToY(sf.tick);
-          if (Math.abs(y - sy) <= 11) {
-            return { type: 'soflan-line', soflan: sf };
-          }
+      return null;
+    }
+
+    // ---- プラグインの道具・キャンバスの操作（ソフランなど） ----
+    // 'down' で true を返したプラグインが、離すまでその操作を受け持つ
+    const pluginTools = new Map(); // 道具の id → { pluginId, btn, title, options }
+    const canvasHandlers = [];
+    let canvasCapture = null;
+    function canvasEventInfo(type, evt, x, y) {
+      return {
+        type, x, y,
+        lane: xToLane(x),
+        tick: yToTick(y, true),
+        rawTick: yToTick(y, false),
+        button: Number(evt?.button) || 0,
+        shiftKey: Boolean(evt?.shiftKey),
+        altKey: Boolean(evt?.altKey),
+        ctrlKey: Boolean(evt?.ctrlKey || evt?.metaKey),
+        tool: state.currentTool,
+        layerId: state.activeLayerId,
+        event: evt || null
+      };
+    }
+    function runCanvasHandlers(type, evt, x, y) {
+      const none = type === 'hover' ? null : false;
+      if (!canvasHandlers.length) return none;
+      const info = canvasEventInfo(type, evt, x, y);
+      for (let i = canvasHandlers.length - 1; i >= 0; i--) {
+        const h = canvasHandlers[i];
+        let r;
+        try {
+          r = h.fn(info);
+        } catch (e) {
+          console.error('[plugin] canvas', e);
+          continue;
+        }
+        if (type === 'hover') {
+          if (typeof r === 'string') return r;
+          continue;
+        }
+        if (r === true) {
+          if (type === 'down') canvasCapture = h;
+          return true;
         }
       }
-      return null;
+      return none;
+    }
+    function runCapturedCanvasHandler(type, evt, x, y) {
+      const h = canvasCapture;
+      if (type === 'up') canvasCapture = null;
+      if (!h) return;
+      try {
+        h.fn(canvasEventInfo(type, evt, x, y));
+      } catch (e) {
+        console.error('[plugin] canvas', e);
+      }
     }
 
     // キャンバスは表示範囲だけを映しているため、譜面全体を表すラッパー基準で座標を求める
@@ -7279,15 +7510,24 @@
       const lane = xToLane(x);
       const tick = yToTick(y, true);
 
+      // プラグイン（ソフランなど）が受け持つ操作
+      if (runCanvasHandlers('down', evt, x, y)) {
+        if (evt.button === 2) {
+          canvasCapture = null;
+        } else {
+          state.pointer.isDown = true;
+          state.pointer.mode = 'plugin';
+        }
+        return;
+      }
+
       if (evt.button === 2) {
         evt.preventDefault();
         if (state.activeSlideDraft) { finishActiveSlide(); return; }
         const hit = hitTestCanvas(x, y);
         if (hit) {
           pushHistory();
-          if (hit.type === 'soflan-line') {
-            state.soflans = state.soflans.filter(s => s.id !== hit.soflan.id);
-          } else if (hit.type.includes('slide-node') && hit.note.points.length > 2) {
+          if (hit.type.includes('slide-node') && hit.note.points.length > 2) {
             hit.note.points.splice(hit.relayIndex, 1);
             state.selectedRelayIndex = 0;
           } else if (hit.note) {
@@ -7307,7 +7547,7 @@
       const hit = hitTestCanvas(x, y);
 
       // 1. Playhead handle or ruler scrubbing
-      if (!state.activeSlideDraft && (!hit || hit.type !== 'soflan-line') && (x < RULER_LEFT_WIDTH || (!hit && Math.abs(y - tickToY(state.playback.currentTick)) <= 11))) {
+      if (!state.activeSlideDraft && (x < RULER_LEFT_WIDTH || (!hit && Math.abs(y - tickToY(state.playback.currentTick)) <= 11))) {
         state.pointer.mode = 'scrub-playhead';
         const useSnap = state.playback.playheadSnap && !evt.shiftKey;
         setPlayheadTick(yToTick(y, useSnap), true);
@@ -7318,9 +7558,7 @@
       if (state.currentTool === 'erase') {
         if (hit) {
           pushHistory();
-          if (hit.type === 'soflan-line') {
-            state.soflans = state.soflans.filter(s => s.id !== hit.soflan.id);
-          } else if (hit.type.includes('slide-node') && hit.note.points.length > 2) {
+          if (hit.type.includes('slide-node') && hit.note.points.length > 2) {
             hit.note.points.splice(hit.relayIndex, 1);
           } else if (hit.note) {
             state.notes = state.notes.filter(n => n.id !== hit.note.id);
@@ -7331,29 +7569,9 @@
         return;
       }
 
-      // 2.5 Soflan placement & drag tool (上の「ソフラン」ボタンを選択しているときのみ配置・移動可能)
-      if (state.currentTool === 'soflan') {
-        beginDragHistory();
-        const spdInput = parseFloat(document.getElementById('inputSoflanSpeed')?.value);
-        const speed = Number.isFinite(spdInput) ? Math.max(0, Math.min(100, spdInput)) : 2.0;
-        if (hit && hit.type === 'soflan-line') {
-          state.pointer.mode = 'move-soflan';
-          state.pointer.targetSoflanId = hit.soflan.id;
-        } else {
-          const existing = state.soflans.find(s => s.tick === tick && s.layerId === state.activeLayerId);
-          if (existing) {
-            existing.speed = speed;
-            state.pointer.targetSoflanId = existing.id;
-          } else {
-            const newSf = { id: generateId('soflan'), layerId: state.activeLayerId, tick, speed };
-            state.soflans.push(newSf);
-            state.soflans = normalizeSoflanList(state.soflans);
-            state.pointer.targetSoflanId = newSf.id;
-          }
-          state.pointer.mode = 'move-soflan';
-          showToast(`${tick}t にソフラン (×${speed.toFixed(2)}) を配置しました`, 'info');
-        }
-        syncAllUI();
+      // プラグインの道具の時は、本体の編集（置く・動かす）はしない
+      if (pluginTools.has(state.currentTool)) {
+        state.pointer.isDown = false;
         return;
       }
 
@@ -7394,7 +7612,7 @@
             const clampedTick = pPrev && pNext
               ? Math.max(pPrev.tick + MIN_SLIDE_POINT_GAP_TICKS, Math.min(pNext.tick - MIN_SLIDE_POINT_GAP_TICKS, tick))
               : tick;
-            const clampedLane = Math.max(1, Math.min(NUM_LANES - DEFAULT_NOTE_WIDTH + 1, lane));
+            const clampedLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - DEFAULT_NOTE_WIDTH + 1, lane));
             hit.note.points.splice(segIdx + 1, 0, { tick: clampedTick, lane: clampedLane, width: DEFAULT_NOTE_WIDTH, curve: 'linear' });
             syncAllUI();
             showToast('スライド中継点を追加しました', 'success');
@@ -7485,11 +7703,11 @@
 
         const preset = normalizePreset(getPresetById(state.selectedPresetId));
         if (!preset) return;
-        const clampedLane = Math.max(1, Math.min(NUM_LANES - DEFAULT_NOTE_WIDTH + 1, lane));
+        const clampedLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - DEFAULT_NOTE_WIDTH + 1, lane));
 
         if (preset.type === 'tap') {
-          if (preset.tapPlacementRole && preset.tapPlacementRole !== 'any') {
-            showToast(`「${preset.name}」はスライド合体専用のため単体では配置できません（スライドを選択して合体させてください）`, 'warn');
+          if (!canPlaceAlone(preset)) {
+            showToast(`「${preset.name}」は単体では置けない設定です（スライドの始点・終点に合体させてください。ノーツ設定の「置ける所」で変えられます）`, 'warn');
             return;
           }
           pushHistory();
@@ -7569,6 +7787,8 @@
         } else {
           chartCanvas.style.cursor = 'crosshair';
         }
+        const pluginCursor = runCanvasHandlers('hover', evt, x, y);
+        if (typeof pluginCursor === 'string') chartCanvas.style.cursor = pluginCursor;
         // ノーツに重なっていれば選択プレビュー（枠とカード）を表示
         updateHoverPreview(evt, x < RULER_LEFT_WIDTH ? null : hit);
         scheduleFrameUpdate();
@@ -7581,13 +7801,8 @@
         return;
       }
 
-      if (state.pointer.mode === 'move-soflan') {
-        const sf = state.soflans.find(s => s.id === state.pointer.targetSoflanId);
-        if (sf) {
-          sf.tick = Math.max(0, Math.min(TOTAL_TICKS, tick));
-          state.soflans = normalizeSoflanList(state.soflans);
-          scheduleFrameUpdate('soflanList');
-        }
+      if (state.pointer.mode === 'plugin') {
+        runCapturedCanvasHandler('move', evt, x, y);
         return;
       }
 
@@ -7633,13 +7848,13 @@
           const target = state.notes.find(n => n.id === snapNote.id);
           if (!target) return;
           if (target.type === 'tap') {
-            target.lane = Math.max(1, Math.min(NUM_LANES - snapNote.width + 1, snapNote.lane + deltaLane));
+            target.lane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - snapNote.width + 1, snapNote.lane + deltaLane));
             target.tick = Math.max(0, Math.min(TOTAL_TICKS, snapNote.tick + deltaTick));
           } else if (target.type === 'slide' && target.points) {
             target.points.forEach((pt, idx) => {
               const sPt = snapNote.points[idx];
               if (!sPt) return;
-              pt.lane = Math.max(1, Math.min(NUM_LANES - sPt.width + 1, sPt.lane + deltaLane));
+              pt.lane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - sPt.width + 1, sPt.lane + deltaLane));
               pt.tick = Math.max(0, Math.min(TOTAL_TICKS, sPt.tick + deltaTick));
             });
           }
@@ -7656,16 +7871,16 @@
         : note;
 
       if (state.pointer.mode === 'resize-right') {
-        targetPt.width = Math.max(1, Math.min(NUM_LANES - targetPt.lane + 1, lane - targetPt.lane + 1));
+        targetPt.width = Math.max(1, Math.min(maxPlaceLane() - targetPt.lane + 1, lane - targetPt.lane + 1));
         scheduleFrameUpdate('errors', 'inspector');
       } else if (state.pointer.mode === 'resize-left') {
         const rightEdge = targetPt.lane + targetPt.width - 1;
-        const newLeft = Math.max(1, Math.min(rightEdge, lane));
+        const newLeft = Math.max(minPlaceLane(), Math.min(rightEdge, lane));
         targetPt.lane = newLeft;
         targetPt.width = rightEdge - newLeft + 1;
         scheduleFrameUpdate('errors', 'inspector');
       } else if (state.pointer.mode === 'move-note') {
-        const newLane = Math.max(1, Math.min(NUM_LANES - targetPt.width + 1, lane - state.pointer.dragOffsetLane));
+        const newLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - targetPt.width + 1, lane - state.pointer.dragOffsetLane));
         const rawNewTick = Math.max(0, Math.min(TOTAL_TICKS, tick - state.pointer.dragOffsetTick));
         targetPt.lane = newLane;
         if (note.type === 'slide') {
@@ -7683,6 +7898,7 @@
     function handleCanvasPointerUp() {
       if (!state.pointer.isDown) return;
       state.pointer.isDown = false;
+      if (state.pointer.mode === 'plugin') runCapturedCanvasHandler('up', null, state.pointer.rawX, state.pointer.rawY);
       state.pointer.mode = null;
       commitDragHistory();
       runAllErrorChecks();
@@ -7712,9 +7928,9 @@
     function touchShouldCapture(point) {
       if (state.activeSlideDraft) return false;
       const { x, y } = getCanvasMouseCoords(point);
+      if (runCanvasHandlers('test', point, x, y)) return true;
       if (x < RULER_LEFT_WIDTH) return true;
       const hit = hitTestCanvas(x, y);
-      if (hit && hit.type === 'soflan-line') return state.currentTool === 'soflan';
       if (hit && hit.note) return state.currentTool === 'select' || state.currentTool === 'place';
       return Math.abs(y - tickToY(state.playback.currentTick)) <= 11;
     }
@@ -7834,19 +8050,47 @@
     });
 
     // Zoom, Direction & Judgment Preview Toggles
+    // グリッドの選択欄と、1 グリッドの Tick 数（選択欄に無い細かさの時は、その値を足して見せる）
+    function syncGridControl() {
+      const sel = document.getElementById('selectGrid');
+      if (sel) {
+        const v = String(state.gridDivision);
+        if (![...sel.options].some(o => o.value === v)) {
+          const o = document.createElement('option');
+          o.value = v;
+          o.textContent = `1/${v}`;
+          sel.appendChild(o);
+        }
+        sel.value = v;
+      }
+      const info = document.getElementById('lblGridTickInfo');
+      if (info) info.textContent = `${getSnapTicks()}t`;
+    }
+
     function setGridDivision(div) {
       state.gridDivision = div;
-      document.querySelectorAll('#gridButtonsContainer .grid-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.grid, 10) === div);
-      });
-      document.getElementById('lblGridTickInfo').textContent = `1/${div} · ${getSnapTicks()}t`;
+      syncGridControl();
       renderChart();
       saveToLocalStorage();
     }
 
-    document.querySelectorAll('#gridButtonsContainer .grid-btn').forEach(btn => {
-      btn.addEventListener('click', () => setGridDivision(parseInt(btn.dataset.grid, 10)));
+    document.getElementById('selectGrid')?.addEventListener('change', (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (Number.isFinite(v) && v > 0) setGridDivision(v);
+      e.target.blur(); // − / ＋ キーがすぐ効くように
     });
+
+    // ＋ / − で、選択欄の並びの 1 つ隣のグリッドにする（＋ が細かく、− が粗く）
+    function stepGridDivision(dir) {
+      const list = [...(document.getElementById('selectGrid')?.options || [])]
+        .map(o => parseInt(o.value, 10)).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+      if (!list.length) return;
+      const cur = state.gridDivision;
+      const next = dir > 0 ? (list.find(v => v > cur) ?? list[list.length - 1]) : ([...list].reverse().find(v => v < cur) ?? list[0]);
+      if (next !== cur) setGridDivision(next);
+    }
+    document.getElementById('btnGridCoarser')?.addEventListener('click', () => stepGridDivision(-1));
+    document.getElementById('btnGridFiner')?.addEventListener('click', () => stepGridDivision(1));
 
     // 赤い再生バー（Playhead）を基準位置として縦拡大・縮小を行う関数
     function applyVerticalZoom(newMeasureHeightPx) {
@@ -7894,6 +8138,8 @@
     document.getElementById('btnToggleSimpleMode').addEventListener('click', () => {
       state.simpleMode = !state.simpleMode;
       syncPreviewAndModeUIFromState();
+      // 詳細設定を隠す時は、スライドの始点・終点用のノーツを左の一覧から外す
+      renderPresetList();
       resizeAndRenderCanvas();
       saveToLocalStorage();
       showToast(state.simpleMode ? '詳細設定を隠しました' : '詳細設定を表示しました', 'info');
@@ -7945,9 +8191,20 @@
     // Tool switching
     function setTool(toolName) {
       if (state.activeSlideDraft && toolName !== 'place') finishActiveSlide();
+      const changed = state.currentTool !== toolName;
       state.currentTool = toolName;
       document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tool === toolName));
+      syncPluginToolOptions();
       renderChart();
+      if (changed) emitPluginEvent('tool:change', { tool: toolName });
+    }
+
+    // プラグインの道具の設定（ソフランの倍率など）は、その道具を選んでいる時だけ出す
+    function syncPluginToolOptions() {
+      pluginTools.forEach((t, key) => {
+        if (t.options instanceof HTMLElement) t.options.classList.toggle('hidden', state.currentTool !== key);
+      });
+      updateBarOverflow();
     }
 
     document.querySelectorAll('.tool-btn').forEach(btn => btn.addEventListener('click', () => setTool(btn.dataset.tool)));
@@ -8085,6 +8342,9 @@
         card.className = 'rule-card';
         card._rule = rule;
         card._ruleKey = `${owner}|${rule.id}`;
+        // どの条件か（条件式の入力画面のプラグインが、当てはまるノーツを数える時に使う）
+        card.dataset.owner = owner;
+        card.dataset.ruleId = rule.id;
         card.innerHTML = `
           <div class="row">
             <label class="hstack" style="font-size:11.5px;font-weight:600;cursor:pointer">
@@ -8202,12 +8462,12 @@
       if (Array.isArray(allowedStartIds)) {
         editingAllowedStartTapIds = allowedStartIds.filter(id => taps.some(t => t.id === id));
       } else if (editingAllowedStartTapIds.length === 0) {
-        editingAllowedStartTapIds = taps.filter(t => t.tapPlacementRole !== 'slideEndOnly').map(t => t.id);
+        editingAllowedStartTapIds = taps.filter(t => canBeSlideStart(t)).map(t => t.id);
       }
       if (Array.isArray(allowedEndIds)) {
         editingAllowedEndTapIds = allowedEndIds.filter(id => taps.some(t => t.id === id));
       } else if (editingAllowedEndTapIds.length === 0) {
-        editingAllowedEndTapIds = taps.filter(t => t.tapPlacementRole !== 'slideStartOnly').map(t => t.id);
+        editingAllowedEndTapIds = taps.filter(t => canBeSlideEnd(t)).map(t => t.id);
       }
 
       // 左エディタ内の「始点用 / 終点用」個別チェックボックスリストを描画
@@ -8216,8 +8476,8 @@
         checkList.innerHTML = '';
         taps.forEach(tp => {
           const normTp = normalizePreset(tp);
-          const canStart = normTp.tapPlacementRole !== 'slideEndOnly';
-          const canEnd = normTp.tapPlacementRole !== 'slideStartOnly';
+          const canStart = canBeSlideStart(normTp);
+          const canEnd = canBeSlideEnd(normTp);
           const checkedStart = canStart && editingAllowedStartTapIds.includes(tp.id);
           const checkedEnd = canEnd && editingAllowedEndTapIds.includes(tp.id);
 
@@ -8391,7 +8651,15 @@
         const wrap = document.createElement('div');
         wrap.className = 'swatch-edit';
         if (idx === 0) {
-          wrap.innerHTML = `<span class="color-swatch-btn is-base" style="background:${escapeHtml(color)}" title="基本の色（上の色で変えられます）"></span>`;
+          // 基本の色：ノーツの色（見出しの色と同じ）。ここでも変えられる
+          wrap.innerHTML = `<input type="color" data-base-color value="${escapeHtml(color)}" title="基本の色（ノーツの色。見出しの色と同じ）" />`;
+          wrap.querySelector('input').addEventListener('input', e => {
+            const head = document.getElementById('presetColorInput');
+            if (!head) return;
+            head.value = e.target.value;
+            updatePresetFormLabels();
+          });
+          wrap.querySelector('input').addEventListener('change', () => saveToLocalStorage());
         } else {
           wrap.innerHTML = `<input type="color" value="${escapeHtml(color)}" title="色 ${idx + 1}" /><button type="button" class="swatch-remove" title="この色を削除">×</button>`;
           wrap.querySelector('input').addEventListener('input', e => {
@@ -8447,8 +8715,8 @@
 
       if (colorContainer) renderSlideColorSwatches(colorContainer, activePreset, activeSlideTarget);
 
-      const startAllowedTaps = state.presets.filter(p => p.type === 'tap' && activePreset.mergeableStartTapIds.includes(p.id) && p.tapPlacementRole !== 'slideEndOnly');
-      const endAllowedTaps = state.presets.filter(p => p.type === 'tap' && activePreset.mergeableEndTapIds.includes(p.id) && p.tapPlacementRole !== 'slideStartOnly');
+      const startAllowedTaps = state.presets.filter(p => p.type === 'tap' && activePreset.mergeableStartTapIds.includes(p.id) && canBeSlideStart(p));
+      const endAllowedTaps = state.presets.filter(p => p.type === 'tap' && activePreset.mergeableEndTapIds.includes(p.id) && canBeSlideEnd(p));
 
       const noneChoice = { id: 'none', name: '合体なし', color: 'var(--line-strong)' };
       const startChoices = [...startAllowedTaps.map(tp => ({ id: tp.id, name: tp.name, color: tp.color })), noneChoice];
@@ -8494,15 +8762,31 @@
     function renderPresetList() {
       const container = document.getElementById('presetListContainer');
       container.innerHTML = '';
+      // 詳細設定を隠している時は、スライドの始点・終点にしか置けないタップ（単体では置けない物）を一覧に出さない
+      // （スライドを選んだ時の「始点のノーツ」「終点のノーツ」から選ぶ）
+      const hideMergeOnly = (p) => Boolean(state.simpleMode) && p.type === 'tap' && !canPlaceAlone(p);
+      const selRaw = getPresetById(state.selectedPresetId);
+      if (selRaw && hideMergeOnly(normalizePreset(selRaw))) {
+        const firstShown = state.presets.find(p => !hideMergeOnly(normalizePreset(p)));
+        if (firstShown) {
+          state.selectedPresetId = firstShown.id;
+          loadPresetIntoEditorForm(firstShown);
+        }
+      }
+      let hiddenMergeOnly = 0;
       state.presets.forEach(rawPreset => {
         const preset = normalizePreset(rawPreset);
+        if (hideMergeOnly(preset)) {
+          hiddenMergeOnly++;
+          return;
+        }
         const isSelected = preset.id === state.selectedPresetId;
         const div = document.createElement('div');
         div.className = `pick-row${isSelected ? ' is-active' : ''}`;
         const opacityPct = Math.round((preset.colorOpacity ?? 1) * 100);
         const subInfo = preset.type === 'slide'
           ? `帯 +${preset.slideBodyWidthExtTotal.toFixed(1)}L${preset.slideGradientFade ? ' · グラデ' : ''}${(preset.slideColors?.length || 1) > 1 ? ` · ${preset.slideColors.length}色` : ''}`
-          : `横 +${preset.judgeWidthExtTotal.toFixed(1)}L${opacityPct < 100 ? ` · ${opacityPct}%` : ''}${preset.tapPlacementRole !== 'any' ? ' · 合体専用' : ''}`;
+          : `横 +${preset.judgeWidthExtTotal.toFixed(1)}L${opacityPct < 100 ? ` · ${opacityPct}%` : ''}${!canPlaceAlone(preset) ? ' · 合体専用' : ''}`;
         div.innerHTML = `
           <span class="swatch" style="background:${hexToRgba(preset.color, preset.colorOpacity ?? 1)}"></span>
           <div style="min-width:0;flex:1">
@@ -8514,13 +8798,21 @@
         div.addEventListener('click', () => {
           if (state.activeSlideDraft) finishActiveSlide();
           state.selectedPresetId = preset.id;
-          loadPresetIntoEditorForm(preset);
+          // 一覧を描いた時の写しではなく、今の設定から読む（直前に変えた設定が戻らないように）
+          loadPresetIntoEditorForm(getPresetById(preset.id) || preset);
           renderPresetList();
           renderChart();
           if (isCompactLayout() && state.simpleMode) closeSheets();
         });
         container.appendChild(div);
       });
+      if (hiddenMergeOnly > 0) {
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.style.cssText = 'margin:4px 2px 0;font-size:11px;line-height:1.5';
+        hint.textContent = `スライドの始点・終点用のノーツ（${hiddenMergeOnly} 個）は、スライドを選ぶと出る「始点のノーツ」「終点のノーツ」から選べます`;
+        container.appendChild(hint);
+      }
     }
 
     function loadPresetIntoEditorForm(preset) {
@@ -8540,8 +8832,11 @@
 
       const opSlider = document.getElementById('sliderTapColorOpacity');
       if (opSlider) opSlider.value = Math.round((preset.colorOpacity ?? 1.0) * 100);
-      const roleSel = document.getElementById('selectTapPlacementRole');
-      if (roleSel) roleSel.value = preset.tapPlacementRole || 'any';
+      const placeF = tapPlaceFlags(preset);
+      const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+      setChk('chkPlaceAlone', placeF.alone);
+      setChk('chkPlaceStart', placeF.start);
+      setChk('chkPlaceEnd', placeF.end);
       const markSel = document.getElementById('selectTapCenterMark');
       if (markSel) markSel.value = preset.tapCenterMark || 'none';
       const tapSndChk = document.getElementById('chkTapPlaySound');
@@ -8555,6 +8850,14 @@
       if (sRelaySnd) sRelaySnd.checked = Boolean(preset.slideRelaySound);
       const sEndSnd = document.getElementById('chkSlideEndSound');
       if (sEndSnd) sEndSnd.checked = preset.slideEndSound !== false;
+      const sStartLook = document.getElementById('selectSlideStartLook');
+      if (sStartLook) sStartLook.value = preset.slideStartLook || 'none';
+      const sEndLook = document.getElementById('selectSlideEndLook');
+      if (sEndLook) sEndLook.value = preset.slideEndLook || 'none';
+      [['chkSlideJudgeStart', 'slideJudgeStart'], ['chkSlideJudgeTicks', 'slideJudgeTicks'], ['chkSlideJudgeEnd', 'slideJudgeEnd']].forEach(([elId, key]) => {
+        const el = document.getElementById(elId);
+        if (el) el.checked = preset[key] !== false;
+      });
 
       document.getElementById('presetJudgeWidthInput').value = preset.judgeWidthExtTotal.toFixed(1);
       document.getElementById('presetSlideBodyWidthInput').value = preset.slideBodyWidthExtTotal.toFixed(1);
@@ -8634,7 +8937,19 @@
       const sideExtL = (extTotalL / 2).toFixed(2);
 
       document.getElementById('lblPresetColorHex').textContent = (document.getElementById('presetColorInput').value || '#06b6d4').toUpperCase();
-      document.getElementById('lblTapSideExtendDetail').textContent = `合計 +${extTotalL.toFixed(1)}L 拡張 (左右片側 +${sideExtL}L ずつ)`;
+      document.getElementById('lblTapSideExtendDetail').textContent = `合計 +${extTotalL.toFixed(1)}L（左右に +${sideExtL}L ずつ）`;
+
+      // ノーツの色は、ほかの項目と同じようにすぐ反映する（スライドは色のバリエーションの 1 つ目＝基本の色も）
+      const liveColor = document.getElementById('presetColorInput').value;
+      const colorTarget = getPresetById(state.selectedPresetId);
+      if (colorTarget && /^#[0-9a-f]{6}$/i.test(liveColor || '') && colorTarget.color !== liveColor) {
+        colorTarget.color = liveColor;
+        if (Array.isArray(colorTarget.slideColors) && colorTarget.slideColors.length) colorTarget.slideColors = [liveColor, ...colorTarget.slideColors.slice(1)];
+        const baseSwatch = document.querySelector('#slideColorVariantList [data-base-color]');
+        if (baseSwatch && baseSwatch !== document.activeElement) baseSwatch.value = liveColor;
+        renderPresetList();
+        renderSlideQuickMergeBar();
+      }
 
       const tapOpPct = parseInt(document.getElementById('sliderTapColorOpacity')?.value, 10) || 100;
       const lblTapOp = document.getElementById('lblTapColorOpacity');
@@ -8650,7 +8965,7 @@
 
       if (type === 'slide') {
         const bodyExtL = snapHalfLane(document.getElementById('presetSlideBodyWidthInput').value, 1.5);
-        document.getElementById('lblSlideBodyWidthBadge').textContent = `始点・終点とは独立して +${bodyExtL.toFixed(1)}L (片側 +${(bodyExtL / 2).toFixed(2)}L) 拡張`;
+        document.getElementById('lblSlideBodyWidthBadge').textContent = `始点・終点とは別に +${bodyExtL.toFixed(1)}L（左右に +${(bodyExtL / 2).toFixed(2)}L ずつ）`;
 
         const allowedBadge = document.getElementById('lblSlideAllowedTapsBadge');
         if (allowedBadge) allowedBadge.textContent = `始:${editingAllowedStartTapIds.length} / 終:${editingAllowedEndTapIds.length}`;
@@ -8676,6 +8991,11 @@
           curPreset.slideStartSound = Boolean(document.getElementById('chkSlideStartSound')?.checked);
           curPreset.slideRelaySound = Boolean(document.getElementById('chkSlideRelaySound')?.checked);
           curPreset.slideEndSound = Boolean(document.getElementById('chkSlideEndSound')?.checked);
+          curPreset.slideStartLook = document.getElementById('selectSlideStartLook')?.value || 'none';
+          curPreset.slideEndLook = document.getElementById('selectSlideEndLook')?.value || 'none';
+          curPreset.slideJudgeStart = document.getElementById('chkSlideJudgeStart')?.checked !== false;
+          curPreset.slideJudgeTicks = document.getElementById('chkSlideJudgeTicks')?.checked !== false;
+          curPreset.slideJudgeEnd = document.getElementById('chkSlideJudgeEnd')?.checked !== false;
           curPreset.slideStartWidthExtTotal = sExt;
           curPreset.slideEndWidthExtTotal = eExt;
           curPreset.slideStartJudgment = sj;
@@ -8685,7 +9005,11 @@
         const curPreset = getPresetById(state.selectedPresetId);
         if (curPreset && curPreset.type === 'tap') {
           curPreset.colorOpacity = tapOpPct / 100;
-          curPreset.tapPlacementRole = document.getElementById('selectTapPlacementRole')?.value || 'any';
+          const f = readPlaceFlagsFromForm();
+          curPreset.placeAlone = f.alone;
+          curPreset.placeAsStart = f.start;
+          curPreset.placeAsEnd = f.end;
+          curPreset.tapPlacementRole = placementRoleOf(f);
           curPreset.tapCenterMark = document.getElementById('selectTapCenterMark')?.value || 'none';
           curPreset.playSound = Boolean(document.getElementById('chkTapPlaySound')?.checked);
         }
@@ -8713,9 +9037,10 @@
 
     [
       'presetNameInput', 'presetCodeIdInput', 'presetTypeSelect', 'presetColorInput',
-      'sliderTapColorOpacity', 'selectTapPlacementRole',
+      'sliderTapColorOpacity', 'chkPlaceAlone', 'chkPlaceStart', 'chkPlaceEnd',
       'selectTapCenterMark', 'chkTapPlaySound',
       'selectSlideRelayStyle', 'chkSlideStartSound', 'chkSlideRelaySound', 'chkSlideEndSound',
+      'selectSlideStartLook', 'selectSlideEndLook', 'chkSlideJudgeStart', 'chkSlideJudgeTicks', 'chkSlideJudgeEnd',
       'presetJudgeWidthInput', 'presetSlideBodyWidthInput',
       'presetSlideStartExtWidthInput', 'presetSlideEndExtWidthInput',
       'chkSlideGradientFade', 'presetStartTapSelect', 'presetEndTapSelect',
@@ -8741,6 +9066,25 @@
       });
     });
 
+    // 「置ける所」のチェック（全部外した時は単体にする）
+    function readPlaceFlagsFromForm() {
+      const v = (id, fb) => { const el = document.getElementById(id); return el ? el.checked : fb; };
+      const f = { alone: v('chkPlaceAlone', true), start: v('chkPlaceStart', true), end: v('chkPlaceEnd', true) };
+      if (!f.alone && !f.start && !f.end) f.alone = true;
+      return f;
+    }
+    // 1 つも選ばない（どこにも置けない）ようにはしない
+    ['chkPlaceAlone', 'chkPlaceStart', 'chkPlaceEnd'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', (e) => {
+        const any = ['chkPlaceAlone', 'chkPlaceStart', 'chkPlaceEnd'].some(k => document.getElementById(k)?.checked);
+        if (!any) {
+          e.target.checked = true;
+          showToast('どこにも置けなくなるので、1 つは選んでください', 'warn');
+          updatePresetFormLabels();
+        }
+      }, true);
+    });
+
     function readPresetFieldsFromForm() {
       return {
         name: document.getElementById('presetNameInput').value.trim() || 'カスタムノーツ',
@@ -8748,13 +9092,21 @@
         type: document.getElementById('presetTypeSelect').value,
         color: document.getElementById('presetColorInput').value,
         colorOpacity: (parseInt(document.getElementById('sliderTapColorOpacity')?.value, 10) || 100) / 100,
-        tapPlacementRole: document.getElementById('selectTapPlacementRole')?.value || 'any',
+        ...(() => {
+          const f = readPlaceFlagsFromForm();
+          return { placeAlone: f.alone, placeAsStart: f.start, placeAsEnd: f.end, tapPlacementRole: placementRoleOf(f) };
+        })(),
         tapCenterMark: document.getElementById('selectTapCenterMark')?.value || 'none',
         playSound: Boolean(document.getElementById('chkTapPlaySound')?.checked),
         slideRelayStyle: document.getElementById('selectSlideRelayStyle')?.value || 'note',
         slideStartSound: Boolean(document.getElementById('chkSlideStartSound')?.checked),
         slideRelaySound: Boolean(document.getElementById('chkSlideRelaySound')?.checked),
         slideEndSound: Boolean(document.getElementById('chkSlideEndSound')?.checked),
+        slideStartLook: document.getElementById('selectSlideStartLook')?.value || 'none',
+        slideEndLook: document.getElementById('selectSlideEndLook')?.value || 'none',
+        slideJudgeStart: document.getElementById('chkSlideJudgeStart')?.checked !== false,
+        slideJudgeTicks: document.getElementById('chkSlideJudgeTicks')?.checked !== false,
+        slideJudgeEnd: document.getElementById('chkSlideJudgeEnd')?.checked !== false,
         defaultWidth: DEFAULT_NOTE_WIDTH,
         judgeWidthExtTotal: snapHalfLane(document.getElementById('presetJudgeWidthInput').value, 1.0),
         slideBodyWidthExtTotal: snapHalfLane(document.getElementById('presetSlideBodyWidthInput').value, 1.5),
@@ -8775,6 +9127,8 @@
       };
     }
 
+    // ノーツの色を選び終えたら保存する（色は動かしている間もすぐ譜面に出る）
+    document.getElementById('presetColorInput')?.addEventListener('change', () => saveToLocalStorage());
     document.getElementById('btnSavePresetChanges').addEventListener('click', () => {
       const preset = getPresetById(state.selectedPresetId);
       if (!preset) return;
@@ -8849,6 +9203,13 @@
     // 選んでいるノーツが変わった時もプラグインへ知らせる
     function syncInspectorValues() {
       syncInspectorPanel();
+      // 右のパネルの「編集」のタブに、選んでいるノーツの数
+      const editBadge = document.getElementById('tabBadgeEdit');
+      if (editBadge) {
+        const n = state.selectedNoteIds.length || (state.selectedNoteId ? 1 : 0);
+        editBadge.textContent = n > 99 ? '99+' : String(n);
+        editBadge.classList.toggle('hidden', n === 0);
+      }
       emitPluginEvent('selection:change', {});
     }
 
@@ -9024,6 +9385,12 @@
       };
       if (debounce) noteRulesApplyTimer = setTimeout(apply, 250);
       else apply();
+    }
+
+    // 条件式を計算したノーツの説明（プラグイン用）
+    function describeRuleNode(node) {
+      if (!node) return null;
+      return { noteId: node.noteId, pointIndex: node.pointIndex, tick: node.tick, lane: node.lane, width: node.width, role: node.roleLabel, preset: node.preset?.name || '' };
     }
 
     // 選択中のノーツ（スライドは選択中の点）で式を計算する
@@ -9337,7 +9704,21 @@
       if (hint) hint.textContent = (ruleHelpTarget && ruleHelpTarget.isConnected) ? 'クリックすると、編集中の式のカーソル位置に入ります' : 'クリックするとコピーします';
     }
 
+    // 「一覧」「定数一覧」のボタン：プラグイン（条件式の入力補助）が画面を差し替えていれば、そちらを開く
+    let pluginRuleHelpOpener = null;
     function openRuleHelp() {
+      if (pluginRuleHelpOpener) {
+        try {
+          pluginRuleHelpOpener.fn(ruleHelpTarget && ruleHelpTarget.isConnected ? ruleHelpTarget : null);
+          return;
+        } catch (e) {
+          console.error('[plugin] rules.setHelpOpener', e);
+        }
+      }
+      openBuiltinRuleHelp();
+    }
+
+    function openBuiltinRuleHelp() {
       const search = document.getElementById('inputHelpSearch');
       if (search) search.value = '';
       renderRuleHelp();
@@ -9380,8 +9761,8 @@
       target.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    document.getElementById('btnOpenConstHelpModal').addEventListener('click', openRuleHelp);
-    document.getElementById('btnShowConstRefInline').addEventListener('click', openRuleHelp);
+    document.getElementById('btnOpenConstHelpModal')?.addEventListener('click', openRuleHelp);
+    document.getElementById('btnShowConstRefInline')?.addEventListener('click', openRuleHelp);
     document.getElementById('btnCloseConstHelpModal').addEventListener('click', () => {
       document.getElementById('constHelpModal').classList.add('hidden');
     });
@@ -9405,8 +9786,8 @@
             ? clampSlidePointTick(note.points, state.selectedRelayIndex || 0, desired)
             : desired;
         }
-        if (id.includes('Lane')) pt.lane = Math.max(1, Math.min(NUM_LANES - pt.width + 1, val));
-        if (id.includes('Width')) pt.width = Math.max(1, Math.min(NUM_LANES - pt.lane + 1, val));
+        if (id.includes('Lane')) pt.lane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - pt.width + 1, val));
+        if (id.includes('Width')) pt.width = Math.max(1, Math.min(maxPlaceLane() - pt.lane + 1, val));
         syncAllUI();
       });
     });
@@ -9620,7 +10001,8 @@
         presetId: note.presetId,
         soundPresetId: tapId || note.presetId,
         kind: spec.isMerged ? 'tap' : 'slide',
-        playSound: Boolean(spec.playSound)
+        // 中継点は、粒のある中継点だけ鳴らす（プレイと同じ。何もなしの中継点は鳴らさない）
+        playSound: Boolean(spec.playSound) && (spec.role !== 'relay' || spec.relayStyle === 'dot')
       };
     }
 
@@ -9731,7 +10113,15 @@
     });
 
 
-    const TOOL_SHORTCUTS = { 1: 'place', 2: 'select', 3: 'relay', 4: 'erase', 5: 'soflan' };
+    // 1〜4 は本体の道具、5 からはプラグインの道具（ソフランなど）
+    const BUILTIN_TOOLS = ['place', 'select', 'relay', 'erase'];
+    function toolForShortcut(key) {
+      if (!/^[1-9]$/.test(String(key))) return null;
+      return [...BUILTIN_TOOLS, ...pluginTools.keys()][Number(key) - 1] || null;
+    }
+    function refreshPluginToolTitles() {
+      [...pluginTools.values()].forEach((t, i) => { t.btn.title = `${t.title} (${BUILTIN_TOOLS.length + i + 1})`; });
+    }
 
     // 開いているモーダル（本体とプラグインのもの）
     function getOpenModals() {
@@ -9797,12 +10187,20 @@
       } else if (isCtrl && key === 'y') {
         e.preventDefault();
         redo();
+      } else if (!isCtrl && !e.altKey && (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd')) {
+        // ＋：グリッドを細かく
+        e.preventDefault();
+        stepGridDivision(1);
+      } else if (!isCtrl && !e.altKey && (e.key === '-' || e.code === 'NumpadSubtract')) {
+        // −：グリッドを粗く
+        e.preventDefault();
+        stepGridDivision(-1);
       } else if (!isCtrl && !e.altKey && key === 'c') {
         if (cycleSlideColor(e.shiftKey ? -1 : 1)) e.preventDefault();
-      } else if (!isCtrl && !e.altKey && TOOL_SHORTCUTS[e.key]) {
-        // ツールボタンの表示通り 1〜5 キーでツールを切り替える
+      } else if (!isCtrl && !e.altKey && toolForShortcut(e.key)) {
+        // ツールボタンの表示通り、1 からの数字のキーでツールを切り替える
         e.preventDefault();
-        setTool(TOOL_SHORTCUTS[e.key]);
+        setTool(toolForShortcut(e.key));
       } else {
         // プラグインが登録したキー（コピー・矢印キーでの移動など）
         runPluginCommand(e);
@@ -9850,7 +10248,7 @@
         settings: parsed.settings || extractCurrentSettings(),
         presets: JSON.parse(JSON.stringify(parsed.presets || state.presets)),
         notes: JSON.parse(JSON.stringify(parsed.notes || [])),
-        soflans: normalizeSoflanList(JSON.parse(JSON.stringify(parsed.soflans || []))),
+        soflans: JSON.parse(JSON.stringify(parsed.soflans || [])),
         layers: JSON.parse(JSON.stringify(parsed.layers || state.layers || DEFAULT_LAYERS)),
         activeLayerId: parsed.activeLayerId || state.activeLayerId || 'layer-1',
         templates: JSON.parse(JSON.stringify(parsed.templates || state.templates || [])),
@@ -10012,23 +10410,6 @@
       }
     });
 
-    document.getElementById('btnAddSoflanAtPlayhead')?.addEventListener('click', () => {
-      pushHistory();
-      const tick = Math.round(state.playback.currentTick);
-      const spdInput = parseFloat(document.getElementById('inputSoflanSpeed')?.value);
-      const speed = Number.isFinite(spdInput) ? Math.max(0, Math.min(100, spdInput)) : 2.0;
-      // 必ず現在選択中のレイヤー内のソフランのみを検索・更新する（他レイヤーには干渉しない）
-      const existing = state.soflans.find(s => s.tick === tick && s.layerId === state.activeLayerId);
-      if (existing) {
-        existing.speed = speed;
-      } else {
-        state.soflans.push({ id: generateId('soflan'), layerId: state.activeLayerId, tick, speed });
-      }
-      state.soflans = normalizeSoflanList(state.soflans);
-      syncAllUI();
-      showToast(`再生バー位置 (${tick}t) にソフラン (×${speed.toFixed(2)}) を追加しました`, 'success');
-    });
-
     // ==================== LAYER MANAGEMENT & PATTERN TEMPLATES ENGINE ====================
     function renderLayerListUI() {
       const container = document.getElementById('layerListContainer');
@@ -10150,7 +10531,7 @@
             if (clone.type === 'tap') {
               clone.tick = Math.max(0, Math.min(TOTAL_TICKS, baseTick + (src.relTick || 0)));
               if (mirror) {
-                clone.lane = Math.max(1, Math.min(NUM_LANES - clone.width + 1, NUM_LANES - (src.lane + src.width) + 2));
+                clone.lane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - clone.width + 1, NUM_LANES - (src.lane + src.width) + 2));
               }
               delete clone.relTick; // テンプレート用の相対Tickを配置後のノーツに残さない
             } else if (clone.type === 'slide' && Array.isArray(clone.points)) {
@@ -10158,11 +10539,12 @@
                 const sPt = src.points[pIdx];
                 pt.tick = Math.max(0, Math.min(TOTAL_TICKS, baseTick + (sPt.relTick || 0)));
                 if (mirror) {
-                  pt.lane = Math.max(1, Math.min(NUM_LANES - pt.width + 1, NUM_LANES - (sPt.lane + sPt.width) + 2));
+                  pt.lane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - pt.width + 1, NUM_LANES - (sPt.lane + sPt.width) + 2));
                 }
                 delete pt.relTick;
               });
             }
+            if (mirror && clone.flickDir) clone.flickDir = mirrorFlickDir(clone.flickDir);
             state.notes.push(clone);
             createdIds.push(clone.id);
           });
@@ -10244,7 +10626,6 @@
       renderLayerListUI();
       renderTemplateListUI();
       renderSlideQuickMergeBar();
-      renderSoflanListUI();
       runAllErrorChecks();
       syncInspectorValues();
       updateChartStatistics();
@@ -10252,6 +10633,117 @@
       // ノーツ削除・インスペクタ編集など、syncAllUI() で終わる操作の変更も確実に自動保存する
       saveToLocalStorage();
       emitPluginEvent('ui:sync', {});
+    }
+
+    // ==================== 左右のパネル：右のタブ（編集・演出・確認）と、見出しを押してたたむ欄 ====================
+    const RIGHT_TAB_GROUPS = ['edit', 'effect', 'check'];
+    const RIGHT_TAB_KEY = 'chartStudio.rightTab.v1';
+    const SECTION_FOLD_KEY = 'chartStudio.sectionFold.v1';
+    const rightPanelEl = document.getElementById('rightPanel');
+    const rightTabsEl = document.getElementById('rightTabs');
+    let sectionFold = {};
+    try {
+      sectionFold = JSON.parse(localStorage.getItem(SECTION_FOLD_KEY) || '{}') || {};
+    } catch (e) {
+      sectionFold = {};
+    }
+
+    function setRightTab(tab, { remember = true } = {}) {
+      if (!rightPanelEl || !rightTabsEl) return;
+      const btn = rightTabsEl.querySelector(`[data-tab="${tab}"]`);
+      const t = btn && !btn.hidden ? tab : (rightTabsEl.querySelector('[data-tab]:not([hidden])')?.dataset.tab || 'edit');
+      const changed = rightPanelEl.dataset.tab !== t;
+      rightPanelEl.dataset.tab = t;
+      rightTabsEl.querySelectorAll('[data-tab]').forEach(b => {
+        const on = b.dataset.tab === t;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (remember) {
+        try { localStorage.setItem(RIGHT_TAB_KEY, t); } catch (e) { }
+      }
+      if (changed) rightPanelEl.scrollTop = 0;
+    }
+
+    // 中身の無いタブは隠す（演出のプラグインをすべて切った時など）
+    function refreshRightTabs() {
+      if (!rightPanelEl || !rightTabsEl) return;
+      rightTabsEl.querySelectorAll('[data-tab]').forEach(b => {
+        b.hidden = !rightPanelEl.querySelector(`.section[data-group="${b.dataset.tab}"]`);
+      });
+      const cur = rightPanelEl.dataset.tab;
+      const btn = cur ? rightTabsEl.querySelector(`[data-tab="${cur}"]`) : null;
+      if (!btn || btn.hidden) setRightTab(cur || 'edit', { remember: false });
+    }
+
+    function sectionKeyOf(sec) {
+      if (sec.dataset.key) return sec.dataset.key;
+      const t = sec.querySelector('.section-title');
+      if (!t) return '';
+      const text = [...t.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
+      return `${sec.closest('.side')?.id || ''}:${text}`;
+    }
+
+    function setSectionCollapsed(sec, collapsed, { remember = true } = {}) {
+      sec.classList.toggle('is-collapsed', collapsed);
+      sec.querySelector(':scope > .section-head > .section-title')?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      if (!remember) return;
+      const key = sectionKeyOf(sec);
+      if (!key) return;
+      if (collapsed) sectionFold[key] = 1;
+      else delete sectionFold[key];
+      try { localStorage.setItem(SECTION_FOLD_KEY, JSON.stringify(sectionFold)); } catch (e) { }
+    }
+
+    // 見出しを押すと欄をたたむ・開く（たたんだ欄は覚えておく）
+    function prepareCollapsibleSection(sec) {
+      const t = sec.querySelector(':scope > .section-head > .section-title');
+      if (!t || t.dataset.fold) return;
+      t.dataset.fold = '1';
+      t.setAttribute('role', 'button');
+      t.setAttribute('tabindex', '0');
+      if (!t.title) t.title = '押すと、この欄をたたむ・開く';
+      t.insertAdjacentHTML('afterbegin', '<i class="fa-solid fa-chevron-down section-chevron" aria-hidden="true"></i>');
+      setSectionCollapsed(sec, Boolean(sectionFold[sectionKeyOf(sec)]), { remember: false });
+    }
+
+    // その欄を見せる：右のパネルならそのタブに切り替え、たたんでいれば開いて、見える所までスクロールする
+    function revealSection(sec) {
+      if (!sec || !sec.isConnected) return;
+      if (sec.dataset.group && rightPanelEl?.contains(sec)) setRightTab(sec.dataset.group);
+      if (sec.classList.contains('is-collapsed')) setSectionCollapsed(sec, false);
+      // スマホでパネル（下から出るシート）を閉じている時は、スクロールしない
+      const side = sec.closest('.side');
+      if (isCompactLayout() && side && !side.classList.contains('is-open')) return;
+      setTimeout(() => sec.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0);
+    }
+
+    document.querySelectorAll('.side > .section').forEach(prepareCollapsibleSection);
+    document.querySelectorAll('.side').forEach(side => {
+      side.addEventListener('click', (e) => {
+        const t = e.target.closest('.section-title[data-fold]');
+        if (!t || !side.contains(t) || e.target.closest('input, select, button, a, label, textarea')) return;
+        const sec = t.closest('.section');
+        if (sec) setSectionCollapsed(sec, !sec.classList.contains('is-collapsed'));
+      });
+      side.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const t = e.target.closest ? e.target.closest('.section-title[data-fold]') : null;
+        if (!t || t !== e.target) return;
+        e.preventDefault();
+        const sec = t.closest('.section');
+        if (sec) setSectionCollapsed(sec, !sec.classList.contains('is-collapsed'));
+      });
+    });
+    rightTabsEl?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tab]');
+      if (b) setRightTab(b.dataset.tab);
+    });
+    {
+      let saved = null;
+      try { saved = localStorage.getItem(RIGHT_TAB_KEY); } catch (e) { }
+      setRightTab(RIGHT_TAB_GROUPS.includes(saved) ? saved : 'edit', { remember: false });
+      refreshRightTabs();
     }
 
     // ==================== スマホ：下から出るパネル（シート） ====================
@@ -10324,6 +10816,9 @@
     const pluginCommands = [];
     let pluginLoadContext = null;
     let pluginsStarted = false;
+    let quietPluginLoad = false; // ZIP からまとめて追加している間は、1 つずつの知らせを出さない
+    const bundledLoadedFiles = new Set(); // 標準の plugins フォルダから読み込めたファイル名（小文字）
+    const userLibEntries = []; // 追加した部品（プラグインではなく、ほかのプラグインが使う物。lane-3d.js など）
     let tempoMapOwner = null;
     let clockOwner = null;
     let loopRangeOwner = null;
@@ -10361,7 +10856,7 @@
         if (pluginRegistry.has(def.id)) {
           const msg = `同じ ID（${def.id}）のプラグインがすでにあるため、${ctxInfo.file || '追加したプラグイン'} は読み込みませんでした`;
           pluginLoadProblems.push(msg);
-          if (pluginsStarted) showToast(msg, 'warn');
+          if (pluginsStarted && !quietPluginLoad) showToast(msg, 'warn');
           return false;
         }
         const rec = {
@@ -10457,10 +10952,14 @@
         pluginLoadContext = { source: 'bundled', file };
         const ok = await loadScriptTag(`plugins/${file}`);
         pluginLoadContext = null;
-        if (!ok) pluginLoadProblems.push(`plugins/${file} を読み込めませんでした`);
+        if (ok) bundledLoadedFiles.add(file.split('/').pop().toLowerCase());
+        else pluginLoadProblems.push(`plugins/${file} を読み込めませんでした`);
       }
       try {
-        for (const entry of await getUserPluginEntries()) await runUserPluginCode(entry);
+        for (const entry of await getUserPluginEntries()) {
+          await runUserPluginCode(entry);
+          if (entry.lib) userLibEntries.push(entry);
+        }
       } catch (e) {
         pluginLoadProblems.push('追加したプラグインを読み込めませんでした');
       }
@@ -10666,9 +11165,29 @@
       return {
         list: panel,
         hide,
+        // 種類（addMenuItem の group）ごとに並べて見出しを付ける。同じ種類の中は足した順
         refresh() {
-          btn?.classList.toggle('hidden', panel.children.length === 0);
-          if (panel.children.length === 0) hide();
+          const ORDER = ['look', 'rules', 'file', 'other'];
+          const LABEL = { look: '見た目・音', rules: 'チェック条件', file: '画像・ほかの譜面', other: 'そのほか' };
+          const groupOf = (el) => (ORDER.includes(el.dataset.group) ? el.dataset.group : 'other');
+          panel.querySelectorAll('.menu-head').forEach(h => h.remove());
+          const items = [...panel.querySelectorAll('.menu-item')];
+          items.sort((a, b) => ORDER.indexOf(groupOf(a)) - ORDER.indexOf(groupOf(b)));
+          const kinds = new Set(items.map(groupOf));
+          let last = null;
+          items.forEach(it => {
+            const g = groupOf(it);
+            if (kinds.size > 1 && g !== last) {
+              const h = document.createElement('div');
+              h.className = 'menu-head';
+              h.textContent = LABEL[g];
+              panel.appendChild(h);
+              last = g;
+            }
+            panel.appendChild(it);
+          });
+          btn?.classList.toggle('hidden', items.length === 0);
+          if (items.length === 0) hide();
           updateBarOverflow();
         }
       };
@@ -10676,7 +11195,7 @@
 
     // ---- 部品 ----
     function pluginSlotEl(name) {
-      return document.getElementById({ toolbar: 'pluginToolbarSlot', topbar: 'pluginTopbarSlot', left: 'pluginLeftSlot', right: 'pluginRightSlot', save: 'pluginSaveSlot', stage: 'stagePanelSlot' }[name] || '');
+      return document.getElementById({ toolbar: 'pluginToolbarSlot', topbar: 'pluginTopbarSlot', topbarStart: 'pluginTopbarStartSlot', left: 'pluginLeftSlot', right: 'pluginRightSlot', save: 'pluginSaveSlot', stage: 'stagePanelSlot' }[name] || '');
     }
 
     function createPluginApi(rec) {
@@ -10699,12 +11218,15 @@
       let clockCleanupAdded = false;
       let rangeCleanupAdded = false;
       let soundCleanupAdded = false;
+      let speedCleanupAdded = false;
       const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 
-      const makeButton = ({ icon = '', label = '', title = '', onClick, className = 'btn btn-sm' } = {}) => {
+      // compact: true にすると、狭い PC では文字を隠してアイコンだけにする
+      const makeButton = ({ icon = '', label = '', title = '', onClick, className = 'btn btn-sm', compact = false } = {}) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = className;
+        if (compact && icon) btn.classList.add('compact-label');
         btn.dataset.plugin = id;
         const setContent = (text) => {
           btn.innerHTML = `${icon ? `<i class="${escapeHtml(icon)}"></i>` : ''}${text ? `<span>${escapeHtml(text)}</span>` : ''}`;
@@ -10791,7 +11313,6 @@
             try {
               result = fn(state);
             } finally {
-              state.soflans = normalizeSoflanList(state.soflans);
               refreshOutsideLaneExtents();
               syncAllUI();
             }
@@ -10813,7 +11334,30 @@
           snapTick: (tick) => snapTickToGrid(tick),
           get snapTicks() { return getSnapTicks(); },
           refresh() { syncAllUI(); },
-          check() { runAllErrorChecks(); }
+          check() { runAllErrorChecks(); },
+          // スクロールの速さ（ソフラン）を計算する物を入れる：{ speedAt(tick, layerId), breakpoints(layerId) → 速さが変わる Tick の一覧 }。null で外す（いつも 1 倍）
+          setScrollSpeed(provider) {
+            scrollSpeedProvider = provider && typeof provider.speedAt === 'function' ? provider : null;
+            scrollSpeedOwner = scrollSpeedProvider ? id : null;
+            if (!speedCleanupAdded) {
+              speedCleanupAdded = true;
+              own(() => {
+                if (scrollSpeedOwner === id) {
+                  scrollSpeedOwner = null;
+                  scrollSpeedProvider = null;
+                  scheduleFrameUpdate();
+                }
+              });
+            }
+            scheduleFrameUpdate();
+          },
+          // ドラッグなど、何度も書き換える変更：beginDrag() で始め、endDrag() で 1 回の「元に戻す」にまとめる
+          // （キャンバスの操作を受け持った時は、離した時に本体がまとめるので endDrag は要らない）
+          beginDrag() { beginDragHistory(); },
+          endDrag() {
+            commitDragHistory();
+            syncAllUI();
+          }
         },
 
         // 時間（テンポ・拍子）
@@ -10857,9 +11401,12 @@
           pause() { if (state.playback.isPlaying) togglePlayback(); },
           toggle() { togglePlayback(); },
           seek(tick) { setPlayheadTick(tick); },
-          // 再生位置（ms）を返す関数を時計にする（音源の再生位置に合わせる時など）。null で元に戻す
+          // 再生位置（ms）を返す関数を時計にする（音源の再生位置に合わせる時など）。null で元に戻す（自分が付けた時計だけ外れる）。
+          // 関数が数でない値（null）を返したフレームは、本体の時計で進む
           // toContextTime(ms) も渡すと、譜面の ms がその時計で AudioContext の何秒になるかを本体が使える（効果音の予約）
           setClock(fn, { toContextTime = null } = {}) {
+            // 外す時は、自分が付けた時計だけ（ほかのプラグインの時計を外さないように）
+            if (typeof fn !== 'function' && clockOwner && clockOwner !== id) return;
             playbackClockSource = typeof fn === 'function' ? fn : null;
             playbackClockToContext = playbackClockSource && typeof toContextTime === 'function' ? toContextTime : null;
             clockOwner = playbackClockSource ? id : null;
@@ -10954,6 +11501,52 @@
           renderNow() { renderChart(); },
           relayout() { resizeAndRenderCanvas(); },
           // 譜面に描く。kind: 'background'（レーンの背景の上・グリッドの下）/ 'overlay'（ノーツの上・再生バーの下）
+          // 譜面のキャンバスの操作を受け持つ。fn(e) の e: { type: 'down' | 'move' | 'up' | 'hover' | 'test', x, y, lane, tick, rawTick, button, shiftKey, altKey, ctrlKey, tool, layerId, event }
+          // 'down' で true を返すと、離すまでの操作をこのプラグインが受け持つ。'hover' はカーソルの名前を返す。'test' はタッチでつかむ時に true
+          addCanvasHandler(fn) {
+            if (typeof fn !== 'function') return () => { };
+            const h = { pluginId: id, fn };
+            canvasHandlers.push(h);
+            const remove = () => {
+              const i = canvasHandlers.indexOf(h);
+              if (i >= 0) canvasHandlers.splice(i, 1);
+              if (canvasCapture === h) canvasCapture = null;
+            };
+            own(remove);
+            return remove;
+          },
+          // ノーツの描き方を差し替える（ノーツのデザインのプラグイン用）。fn(info) が true を返したノーツは、本体が本体と印を描かない。
+          // info: { ctx, kind: 'tap' | 'node' | 'relayDot', role, note, preset, presetId, pointIndex, widthLanes（ノーツの幅。レーン）, x, y（真ん中）, w, h, color, opacity, mark, flickDir, selected, selectColor }
+          // （kind 'relayDot' は粒。中継点のほか、見た目を「粒」にした合体なしの始点・終点も。role で分かる）
+          setNoteDrawer(fn) {
+            pluginNoteDrawer = typeof fn === 'function' ? { pluginId: id, fn } : null;
+            if (!rec._noteDrawerOwned) {
+              rec._noteDrawerOwned = true;
+              own(() => {
+                if (pluginNoteDrawer && pluginNoteDrawer.pluginId === id) pluginNoteDrawer = null;
+                scheduleFrameUpdate();
+              });
+            }
+            scheduleFrameUpdate();
+          },
+          // 譜面の左右に、レーンの外側のレーンを n 本ずつ足す（そこにもノーツを置ける）。0 で外す
+          setOuterLanes(n) {
+            pluginOuterLanes = Math.max(0, Math.min(8, Math.round(Number(n) || 0)));
+            if (!rec._outerLanesOwned) {
+              rec._outerLanesOwned = true;
+              own(() => {
+                pluginOuterLanes = 0;
+                refreshOutsideLaneExtents();
+                resizeAndRenderCanvas();
+              });
+            }
+            refreshOutsideLaneExtents();
+            resizeAndRenderCanvas();
+          },
+          get outerLanes() { return pluginOuterLanes; },
+          // フリックの矢印の向きの名前と角度（度。上が 0、右回り）
+          flickDirAngles: () => ({ ...FLICK_DIR_ANGLES }),
+          mirrorFlickDir: (d) => mirrorFlickDir(d),
           addLayer(kind, draw, order = 0) {
             const hook = { pluginId: id, kind: kind === 'background' ? 'background' : 'overlay', draw, order };
             chartLayerHooks.push(hook);
@@ -10975,6 +11568,48 @@
           confirm: (title, message) => new Promise(resolve => openConfirmModal(title, message, () => resolve(true), () => resolve(false))),
           escapeHtml: (v) => escapeHtml(v),
           isCompact: () => isCompactLayout(),
+          // 一覧などを作り直す関数を包む：中の入力欄に書いている途中や、中のボタンを押している途中は待ち、終わってから作り直す
+          // （押している途中に作り直すと、押したボタンが消えて「押せなかった」ことになる）。返す関数を、作り直す関数の代わりに呼ぶ
+          guardRender(container, render) {
+            let pressing = false;
+            let waiting = null;
+            const busy = () => {
+              if (pressing) return true;
+              const ae = document.activeElement;
+              return Boolean(ae && ae !== document.body && container.contains(ae)
+                && ae.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="range"]), select, textarea'));
+            };
+            const flush = () => setTimeout(() => {
+              if (!waiting || busy() || !container.isConnected) return;
+              const args = waiting;
+              waiting = null;
+              render(...args);
+            }, 0);
+            const onDown = () => { pressing = true; };
+            const onUp = () => {
+              if (!pressing) return;
+              pressing = false;
+              flush();
+            };
+            container.addEventListener('pointerdown', onDown);
+            container.addEventListener('focusout', flush);
+            window.addEventListener('pointerup', onUp, true);
+            window.addEventListener('pointercancel', onUp, true);
+            own(() => {
+              container.removeEventListener('pointerdown', onDown);
+              container.removeEventListener('focusout', flush);
+              window.removeEventListener('pointerup', onUp, true);
+              window.removeEventListener('pointercancel', onUp, true);
+            });
+            return (...args) => {
+              if (busy()) {
+                waiting = args;
+                return;
+              }
+              waiting = null;
+              render(...args);
+            };
+          },
           addStyle(css) {
             const el = document.createElement('style');
             el.dataset.plugin = id;
@@ -10983,21 +11618,73 @@
             own(() => el.remove());
             return el;
           },
-          // slot: 'toolbar'（2段目の右側）/ 'topbar'（1段目）
+          // slot: 'toolbar'（2段目の右側）/ 'topbar'（1段目）/ 'topbar-start'（1段目の一番左）
           addButton(slot, opts = {}) {
-            const host = pluginSlotEl(slot === 'topbar' ? 'topbar' : 'toolbar');
-            const b = makeButton({ className: slot === 'topbar' ? 'btn' : 'btn btn-sm', ...opts });
+            const name = slot === 'topbar-start' ? 'topbarStart' : (slot === 'topbar' ? 'topbar' : 'toolbar');
+            const host = pluginSlotEl(name);
+            const b = makeButton({ className: name === 'toolbar' ? 'btn btn-sm' : 'btn', ...opts });
             host?.appendChild(b.el);
             own(() => b.el.remove());
             updateBarOverflow();
             return b;
           },
+          // 編集の道具（配置・選択などの並び）に足す。{ id, label, icon, title, options }（options は道具の横に出す要素）
+          addTool({ id: toolId, label = '', icon = '', title = '', options = null } = {}) {
+            const key = String(toolId || '').trim();
+            if (!/^[a-z0-9][a-z0-9_-]*$/i.test(key) || BUILTIN_TOOLS.includes(key) || pluginTools.has(key)) throw new Error(`道具の id「${key}」は使えません`);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'tool-btn';
+            btn.dataset.tool = key;
+            btn.dataset.plugin = id;
+            btn.innerHTML = `${icon ? `<i class="${escapeHtml(icon)}"></i>` : ''}${escapeHtml(label || key)}`;
+            btn.addEventListener('click', () => setTool(key));
+            document.getElementById('toolSeg')?.appendChild(btn);
+            if (options instanceof HTMLElement) document.getElementById('pluginToolOptionsSlot')?.appendChild(options);
+            pluginTools.set(key, { pluginId: id, btn, title: title || label || key, options });
+            refreshPluginToolTitles();
+            syncPluginToolOptions();
+            const remove = () => {
+              if (!pluginTools.has(key)) return;
+              pluginTools.delete(key);
+              btn.remove();
+              if (options instanceof HTMLElement) options.remove();
+              if (state.currentTool === key) setTool('place');
+              refreshPluginToolTitles();
+              updateBarOverflow();
+            };
+            own(remove);
+            return { el: btn, remove };
+          },
+          // 起動した時に、プラグインの準備ができるまで画面を暗く隠す（次に開いた時から効く）
+          setBootCover(on) {
+            bootCoverDecided = true;
+            try {
+              localStorage.setItem('chartStudio.bootCover', on ? '1' : '0');
+            } catch (e) { }
+          },
+          // 起動した時の画面隠しを、返した関数を呼ぶまで外さない（隠していない時は何もしない）
+          holdBootCover() {
+            if (!document.documentElement.classList.contains('cs-boot')) return () => { };
+            bootCoverHolds++;
+            let done = false;
+            const release = () => {
+              if (done) return;
+              done = true;
+              bootCoverHolds--;
+              maybeReleaseBootCover();
+            };
+            own(release);
+            return release;
+          },
           // 1段目の「ツール」メニューに項目を足す（たまに使う機能はここに）
-          addMenuItem({ icon = '', label = '', title = '', onClick = null } = {}) {
+          // group：メニューの中の種類（'look' 見た目・音 / 'rules' チェック条件 / 'file' 画像・ほかの譜面。無ければ「そのほか」）
+          addMenuItem({ icon = '', label = '', title = '', onClick = null, group = '' } = {}) {
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'menu-item';
             item.dataset.plugin = id;
+            if (group) item.dataset.group = String(group);
             item.innerHTML = `${icon ? `<i class="${escapeHtml(icon)}"></i>` : '<i></i>'}<span></span>`;
             item.querySelector('span').textContent = label;
             item.title = title || '';
@@ -11015,16 +11702,31 @@
             return { el: item, remove };
           },
           // 左右のパネルに見出し付きの欄を足す。side: 'left' / 'right'
-          addSection(side, { title = '' } = {}) {
-            const host = pluginSlotEl(side === 'left' ? 'left' : 'right');
+          // 右のパネルでは group でタブを選ぶ（'edit' 編集・'effect' 演出・'check' 確認。無ければ編集）。見出しを押すとたためる
+          addSection(side, { title = '', group = '' } = {}) {
+            const isLeft = side === 'left';
+            const host = pluginSlotEl(isLeft ? 'left' : 'right');
             const root = document.createElement('section');
             root.className = 'section plugin-section';
             root.dataset.plugin = id;
+            root.dataset.key = `plugin:${id}:${title}`;
+            if (!isLeft) root.dataset.group = RIGHT_TAB_GROUPS.includes(group) ? group : 'edit';
             root.innerHTML = `<div class="section-head"><h2 class="section-title"></h2><div class="hstack section-actions"></div></div><div class="plugin-section-body"></div>`;
             root.querySelector('.section-title').textContent = title;
             host?.appendChild(root);
-            own(() => root.remove());
-            return { root, body: root.querySelector('.plugin-section-body'), actions: root.querySelector('.section-actions') };
+            prepareCollapsibleSection(root);
+            refreshRightTabs();
+            own(() => {
+              root.remove();
+              refreshRightTabs();
+            });
+            return {
+              root,
+              body: root.querySelector('.plugin-section-body'),
+              actions: root.querySelector('.section-actions'),
+              // この欄を見せる（右のパネルならそのタブに切り替え、たたんでいれば開いて、見える所までスクロール）
+              reveal: () => revealSection(root)
+            };
           },
           // 譜面の横（スマホでは譜面の上）に出すパネル
           addStagePanel({ title = '', width = 480, autoWidth = false, onToggle = null } = {}) {
@@ -11222,6 +11924,28 @@
           },
           download: (obj, name) => downloadJsonObject(obj, name),
           get slots() { return state.savedSlots; },
+          // 今エディタで開いている保存スロットの id（どのスロットでもない時は null）
+          get activeSlotId() { return state.activeSlotId || null; },
+          // 保存スロットに切り替える（保存の画面の「切替」と同じ。今の内容は今のスロットに書き込んでから）。切り替えたら true
+          switchSlot(slotId) {
+            const slot = state.savedSlots.find(s => s.id === slotId);
+            if (!slot) return false;
+            flushPendingSave();
+            pushHistory();
+            state.activeSlotId = slot.id;
+            applyProjectDataToEditor(slot);
+            saveToLocalStorage();
+            renderSavedSlotsList();
+            return true;
+          },
+          // 今の譜面を保存スロットに入れる（同じ題名のスロットは上書き）。入れたスロットを返す
+          saveSlot({ title = '' } = {}) {
+            const name = String(title || document.getElementById('inputProjectTitle')?.value || '').trim() || `Chart #${state.savedSlots.length + 1}`;
+            const slot = registerJsonIntoSavedSlots(buildProjectJsonData(name), name);
+            saveToLocalStorage();
+            renderSavedSlotsList();
+            return slot;
+          },
           // 以前の版で譜面の settings に保存していた設定（3D・背景など）
           legacySettings: () => ({ ...lastLoadedSettings })
         },
@@ -11268,7 +11992,93 @@
             syncAllUI();
             return list.length;
           },
-          openHelp: () => openRuleHelp()
+          openHelp: () => openRuleHelp(),
+          // 本体の「条件式の書き方」の一覧を開く（setHelpOpener で差し替えていても）
+          openBuiltinHelp: () => openBuiltinRuleHelp(),
+          // 「一覧」「定数一覧」のボタンで開く画面を差し替える（条件式の入力補助のプラグインが使う。1 つだけ）。
+          // fn(field)：field はその時に書いていた式の入力欄（無ければ null）。null を渡すと本体の一覧に戻る
+          setHelpOpener(fn) {
+            pluginRuleHelpOpener = typeof fn === 'function' ? { pluginId: id, fn } : null;
+            if (!rec._helpOpenerOwned) {
+              rec._helpOpenerOwned = true;
+              own(() => {
+                if (pluginRuleHelpOpener && pluginRuleHelpOpener.pluginId === id) pluginRuleHelpOpener = null;
+              });
+            }
+          },
+          // 条件の持ち主（'ノーツ設定の ID:一覧の名前' か 'note:ノーツの ID:custom'）の名前（例：「通常スライド / 始点」）
+          describeOwner: (owner) => describeRuleOwner(owner),
+          // 式を 1 つのノーツで計算する。noteId を省くと選択中のノーツ（スライドは選んでいる点）。text に配列を渡すと、まとめて計算して配列で返す。
+          // → { status: 'ok' | 'empty' | 'error' | 'none', value（表示用の文字）, hit（当てはまるか）, matched（相手）, node, message, start, end }
+          evaluate(text, { noteId = null, pointIndex = null } = {}) {
+            const many = Array.isArray(text);
+            const texts = many ? text : [text];
+            const all = (r) => (many ? texts.map(() => ({ ...r })) : r);
+            const id0 = noteId || state.selectedNoteId;
+            const note = id0 ? state.notes.find(n => n.id === id0) : null;
+            if (!note) return all({ status: 'none', message: 'ノーツを選ぶと、そのノーツでの値を計算します' });
+            const nodes = buildTestableNodes();
+            const pi = note.type === 'slide' ? (pointIndex ?? (noteId ? 0 : (state.selectedRelayIndex ?? 0))) : 0;
+            const node = nodes.find(n => n.noteId === note.id && n.pointIndex === pi) || nodes.find(n => n.noteId === note.id);
+            if (!node) return all({ status: 'none', message: 'このノーツは判定の対象外です（非表示のレイヤー・レーンの外）' });
+            const info = describeRuleNode(node);
+            const results = texts.map(t => {
+              const compiled = getRuleCondition(t);
+              if (compiled.kind === 'empty') return { status: 'empty', node: info };
+              if (compiled.kind === 'error') return { status: 'error', message: compiled.message, start: compiled.start, end: compiled.end, node: info };
+              const { value, hit, ctx } = runRuleOnNode(compiled, node, { nodes });
+              return { status: 'ok', value: formatRuleValue(value), hit, matched: ctx.matched ? formatRuleValue(ctx.matched) : null, node: info };
+            });
+            return many ? results : results[0];
+          },
+          // 表示文・直し方の {式} を、そのノーツでの値に置き換えた文（noteId を省くと選択中のノーツ）
+          renderMessage(text, { noteId = null, pointIndex = null, condition = '' } = {}) {
+            const id0 = noteId || state.selectedNoteId;
+            const note = id0 ? state.notes.find(n => n.id === id0) : null;
+            if (!note) return String(text ?? '');
+            const nodes = buildTestableNodes();
+            const pi = note.type === 'slide' ? (pointIndex ?? (noteId ? 0 : (state.selectedRelayIndex ?? 0))) : 0;
+            const node = nodes.find(n => n.noteId === note.id && n.pointIndex === pi) || nodes.find(n => n.noteId === note.id);
+            if (!node) return String(text ?? '');
+            const compiled = getRuleCondition(condition);
+            const ctx = compiled.kind === 'new' ? runRuleOnNode(compiled, node, { nodes }).ctx : { self: node, other: null, pass: { nodes }, matched: null, candidates: null };
+            return renderRuleTemplate(text, ctx);
+          },
+          // 式が当てはまるノーツを探す。owner を渡すと、その条件が付くノーツ（その種類・始点・終点など）だけを見る。
+          // → { status, count（当てはまる数）, total（見た数）, hits: [{ noteId, pointIndex, tick, lane, width, role, preset }]（limit 個まで） }
+          test(text, { owner = null, limit = 200 } = {}) {
+            const compiled = getRuleCondition(text);
+            if (compiled.kind === 'empty') return { status: 'empty', count: 0, total: 0, hits: [] };
+            if (compiled.kind === 'error') return { status: 'error', message: compiled.message, start: compiled.start, end: compiled.end, count: 0, total: 0, hits: [] };
+            const nodes = buildTestableNodes();
+            const pass = { nodes };
+            let targets = nodes;
+            if (owner) {
+              const parts = String(owner).split(':');
+              targets = parts[0] === 'note' ? nodes.filter(n => n.noteId === parts[1]) : nodes.filter(n => (n.ruleOwners || []).includes(String(owner)));
+            }
+            const hits = [];
+            let count = 0;
+            targets.forEach(node => {
+              if (!runRuleOnNode(compiled, node, pass).hit) return;
+              count++;
+              if (hits.length < limit) hits.push(describeRuleNode(node));
+            });
+            return { status: 'ok', count, total: targets.length, hits };
+          },
+          // 条件式で使える言葉の一覧（入力の補助・色分けをするプラグイン用）。help は「使える名前・関数の一覧」の中身
+          vocabulary: () => ({
+            keywords: ['and', 'or', 'not', 'in'],
+            globals: [...RULE_GLOBAL_NAMES],
+            units: Object.keys(RULE_UNITS),
+            nodeProps: Object.entries(RULE_NODE_PROPS).map(([name, d]) => ({ name, type: d.type, rel: !!d.rel })),
+            segProps: Object.entries(RULE_SEG_PROPS).map(([name, d]) => ({ name, type: d.type })),
+            winProps: Object.entries(RULE_WIN_PROPS).map(([name, d]) => ({ name, type: d.type })),
+            funcs: Object.entries(RULE_FUNCS).map(([name, d]) => ({ name, min: d.min ?? 0, max: Number.isFinite(d.max) ? d.max : null, type: d.type || 'any', filter: !!d.filter })),
+            nodeMethods: [...RULE_NODE_METHODS],
+            typeLabels: { ...RULE_TYPE_LABELS },
+            help: clone(RULE_HELP_SECTIONS)
+          })
         },
 
         util: {
@@ -11370,6 +12180,28 @@
         });
         list.appendChild(row);
       });
+      // 追加した部品（ほかのプラグインが使う物。オン・オフはない）
+      userLibEntries.forEach(entry => {
+        const row = document.createElement('div');
+        row.className = 'plugin-row';
+        row.innerHTML = `
+          <span class="plugin-check" style="visibility:hidden"></span>
+          <div class="plugin-info">
+            <div class="plugin-name"><span></span><span class="plugin-badge">部品</span></div>
+            <div class="plugin-desc">ほかのプラグインが使う部品です（オン・オフはありません）</div>
+          </div>
+          <button type="button" class="btn btn-sm btn-icon btn-ghost btn-danger" data-del title="この部品を削除"><i class="fa-regular fa-trash-can"></i></button>
+        `;
+        row.querySelector('.plugin-name span').textContent = entry.fileName || '部品';
+        row.querySelector('[data-del]').addEventListener('click', () => {
+          openConfirmModal('部品の削除', `「${entry.fileName || '部品'}」を削除しますか？（ページを読み込み直すと外れます）`, async () => {
+            await dropUserPluginEntry(entry);
+            renderPluginManager();
+            showToast(`「${entry.fileName || '部品'}」を削除しました（ページを読み込み直すと外れます）`, 'info');
+          });
+        });
+        list.appendChild(row);
+      });
       const info = document.getElementById('lblPluginLoadInfo');
       if (info) info.textContent = pluginLoadProblems.slice(-3).join(' / ');
     }
@@ -11381,29 +12213,197 @@
 
     document.getElementById('btnOpenPlugins')?.addEventListener('click', openPluginManager);
     document.getElementById('btnClosePluginModal')?.addEventListener('click', () => document.getElementById('pluginModal').classList.add('hidden'));
+    // 追加したプラグインのコードを動かして、覚えておく。部品（window.ChartStudio.libs に入る物）も覚える
+    // 返り値：{ ok, added: [プラグインの id], lib: 部品だったか }
+    async function addUserPluginCode(fileName, code) {
+      const entry = { id: generateId('uplugin'), fileName, code, addedAt: Date.now() };
+      const before = new Set(pluginRegistry.keys());
+      const libsBefore = new Map(Object.entries(window.ChartStudio.libs || {}));
+      const ok = await runUserPluginCode(entry);
+      const added = [...pluginRegistry.keys()].filter(k => !before.has(k));
+      const lib = Object.entries(window.ChartStudio.libs || {}).some(([k, v]) => libsBefore.get(k) !== v);
+      if (!ok || (added.length === 0 && !lib)) return { ok: false, added, lib };
+      if (added.length === 0) {
+        entry.lib = true;
+        userLibEntries.push(entry);
+      }
+      const saved = await getUserPluginEntries();
+      saved.push(entry);
+      await idbPutKey(USER_PLUGINS_IDB_KEY, saved);
+      return { ok: true, added, lib };
+    }
+
+    // 追加したファイルを 1 つ外す（そのファイルで入ったプラグインも止めて消す。部品はページを読み込み直すと外れる）
+    async function dropUserPluginEntry(entry) {
+      [...pluginRegistry.values()].filter(rec => rec.userId && rec.userId === entry.id).forEach(rec => {
+        deactivatePlugin(rec);
+        pluginRegistry.delete(rec.id);
+      });
+      const li = userLibEntries.findIndex(x => x.id === entry.id);
+      if (li >= 0) userLibEntries.splice(li, 1);
+      const list = (await getUserPluginEntries()).filter(x => x.id !== entry.id);
+      await idbPutKey(USER_PLUGINS_IDB_KEY, list);
+      afterPluginToggle();
+    }
+
+    // ---- ZIP（いくつものプラグインをまとめた物）----
+    // 中のファイルの一覧（暗号化・ZIP64 は読まない）。{ name, method, data }
+    function readZipDirectory(buf) {
+      const bytes = new Uint8Array(buf);
+      const dv = new DataView(buf);
+      let eocd = -1;
+      for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+        if (dv.getUint32(i, true) === 0x06054b50) {
+          eocd = i;
+          break;
+        }
+      }
+      if (eocd < 0) throw new Error('ZIP ファイルではないようです');
+      const count = dv.getUint16(eocd + 10, true);
+      let p = dv.getUint32(eocd + 16, true);
+      const utf8 = new TextDecoder('utf-8');
+      let sjis = null;
+      try {
+        sjis = new TextDecoder('shift_jis');
+      } catch (e) { }
+      const out = [];
+      for (let n = 0; n < count; n++) {
+        if (p + 46 > bytes.length || dv.getUint32(p, true) !== 0x02014b50) throw new Error('ZIP の中身の一覧を読めませんでした');
+        const flags = dv.getUint16(p + 8, true);
+        const method = dv.getUint16(p + 10, true);
+        const csize = dv.getUint32(p + 20, true);
+        const nameLen = dv.getUint16(p + 28, true);
+        const extraLen = dv.getUint16(p + 30, true);
+        const commentLen = dv.getUint16(p + 32, true);
+        const local = dv.getUint32(p + 42, true);
+        const rawName = bytes.subarray(p + 46, p + 46 + nameLen);
+        let name;
+        // 名前は UTF-8（Windows で作った ZIP は Shift_JIS のこともある）
+        if ((flags & 0x800) || !sjis) name = utf8.decode(rawName);
+        else {
+          try {
+            name = new TextDecoder('utf-8', { fatal: true }).decode(rawName);
+          } catch (e) {
+            name = sjis.decode(rawName);
+          }
+        }
+        p += 46 + nameLen + extraLen + commentLen;
+        if (name.endsWith('/') || (flags & 0x1) || csize === 0xffffffff || local + 30 > bytes.length) continue;
+        const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+        out.push({ name: name.replace(/\\/g, '/'), method, data: bytes.subarray(start, start + csize) });
+      }
+      return out;
+    }
+
+    async function readZipEntryText(entry) {
+      let data = entry.data;
+      if (entry.method === 8) {
+        if (typeof DecompressionStream !== 'function') throw new Error('このブラウザでは ZIP を開けません（新しいブラウザで試してください）');
+        const stream = new Blob([entry.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        data = new Uint8Array(await new Response(stream).arrayBuffer());
+      } else if (entry.method !== 0) {
+        throw new Error('この圧縮の形式は読めません');
+      }
+      return new TextDecoder('utf-8').decode(data);
+    }
+
+    // ZIP の中の .js をまとめて追加する。index.js があればその順番（部品を先に）。
+    // 標準の plugins フォルダにある物と同じ名前のファイルは飛ばし、前に追加した同じ名前のファイルは入れ替える
+    async function importPluginZip(file) {
+      let entries;
+      try {
+        entries = readZipDirectory(await file.arrayBuffer());
+      } catch (err) {
+        showToast(`「${file.name}」を開けませんでした（${err.message}）`, 'warn');
+        return;
+      }
+      const isJs = (n) => /\.js$/i.test(n) && !n.split('/').some(part => part === '__MACOSX' || part.startsWith('.'));
+      const jsEntries = entries.filter(en => isJs(en.name));
+      const indexEntry = jsEntries.filter(en => /(^|\/)index\.js$/i.test(en.name)).sort((a, b) => a.name.length - b.name.length)[0] || null;
+      let order = [];
+      let baseDir = '';
+      if (indexEntry) {
+        baseDir = indexEntry.name.slice(0, indexEntry.name.length - 'index.js'.length);
+        try {
+          const text = await readZipEntryText(indexEntry);
+          order = [...text.matchAll(/['"`]([\w./-]+\.js)['"`]/g)].map(m => m[1]);
+        } catch (e) {
+          order = [];
+        }
+      }
+      const files = jsEntries.filter(en => en !== indexEntry);
+      if (files.length === 0) {
+        showToast(`「${file.name}」の中にプラグイン（.js）がありませんでした`, 'warn');
+        return;
+      }
+      const relOf = (en) => (baseDir && en.name.startsWith(baseDir) ? en.name.slice(baseDir.length) : en.name.split('/').pop());
+      const rankOf = (en) => {
+        const i = order.indexOf(relOf(en));
+        return i < 0 ? order.length : i;
+      };
+      files.sort((a, b) => rankOf(a) - rankOf(b) || a.name.localeCompare(b.name));
+      const addedNames = [];
+      const skipped = [];
+      const failed = [];
+      let replaced = 0;
+      const problemsBefore = pluginLoadProblems.length;
+      quietPluginLoad = true;
+      try {
+        for (const en of files) {
+          const base = en.name.split('/').pop();
+          if (bundledLoadedFiles.has(base.toLowerCase())) {
+            skipped.push(base);
+            continue;
+          }
+          let code;
+          try {
+            code = await readZipEntryText(en);
+          } catch (err) {
+            failed.push(base);
+            continue;
+          }
+          for (const old of (await getUserPluginEntries()).filter(x => String(x.fileName || '').toLowerCase() === base.toLowerCase())) {
+            await dropUserPluginEntry(old);
+            replaced++;
+          }
+          const r = await addUserPluginCode(base, code);
+          if (r.ok) addedNames.push(...(r.added.length ? r.added.map(pluginNameOf) : [`${base}（部品）`]));
+          else failed.push(base);
+        }
+      } finally {
+        quietPluginLoad = false;
+      }
+      const parts = [];
+      if (addedNames.length) parts.push(`${addedNames.length} 個を追加しました${replaced ? `（前に追加した ${replaced} 個は入れ替え）` : ''}`);
+      if (skipped.length) parts.push(`標準のプラグインと同じ名前の ${skipped.length} 個は飛ばしました`);
+      if (failed.length) parts.push(`読み込めなかった物：${failed.slice(0, 4).join('、')}${failed.length > 4 ? ' ほか' : ''}`);
+      const newProblem = pluginLoadProblems.slice(problemsBefore).pop();
+      if (failed.length && newProblem) parts.push(newProblem);
+      showToast(`「${file.name}」：${parts.join('。') || '追加する物がありませんでした'}`, addedNames.length && !failed.length ? 'success' : (addedNames.length ? 'info' : 'warn'));
+    }
+
     document.getElementById('inputPluginFile')?.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files || []);
       e.target.value = '';
       for (const file of files) {
+        if (/\.zip$/i.test(file.name) || /zip/i.test(file.type || '')) {
+          await importPluginZip(file);
+          continue;
+        }
         try {
-          const entry = { id: generateId('uplugin'), fileName: file.name, code: await file.text(), addedAt: Date.now() };
-          const before = new Set(pluginRegistry.keys());
-          const ok = await runUserPluginCode(entry);
-          const added = [...pluginRegistry.keys()].filter(k => !before.has(k));
-          if (!ok || added.length === 0) {
+          const r = await addUserPluginCode(file.name, await file.text());
+          if (!r.ok) {
             showToast(`「${file.name}」からプラグインを読み込めませんでした（ChartStudio.registerPlugin が呼ばれていません）`, 'warn');
             continue;
           }
-          const saved = await getUserPluginEntries();
-          saved.push(entry);
-          await idbPutKey(USER_PLUGINS_IDB_KEY, saved);
-          showToast(`プラグイン「${added.map(pluginNameOf).join('」「')}」を追加しました`, 'success');
+          showToast(r.added.length ? `プラグイン「${r.added.map(pluginNameOf).join('」「')}」を追加しました` : `部品「${file.name}」を追加しました（使うプラグインより前に追加してください）`, 'success');
         } catch (err) {
           showToast(`「${file.name}」を読み込めませんでした`, 'warn');
         }
       }
       renderPluginManager();
     });
+
 
     window.onload = async () => {
       // プラグインのファイルを先に読み込んでおき（登録だけ）、譜面を読み込んでから動かす
@@ -11426,6 +12426,12 @@
       scheduleFrameUpdate('errors', 'inspector');
       setTimeout(() => { chartScrollContainer.scrollTop = chartScrollContainer.scrollHeight; }, 50);
       emitPluginEvent('app:ready', { firstRun: loadResult.firstRun, loadOk: loadResult.ok });
+      bootCoverReady = true;
+      // どのプラグインも隠すと決めなかった時（音ゲーモードを外した時など）は、次から隠さない
+      if (!bootCoverDecided) {
+        try { localStorage.setItem('chartStudio.bootCover', '0'); } catch (e) { }
+      }
+      maybeReleaseBootCover();
     };
     window.onresize = resizeAndRenderCanvas;
   </script>
