@@ -5,6 +5,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#141416" />
+  <!-- iPad・iPhone で「ホーム画面に追加」して開くと、Safari のアドレスバーなしで全画面のように使える（全画面の機能を使わないので、連打の警告も出ない） -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Chart Studio" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <title>Chart Studio — 譜面エディタ</title>
   <script>
     // 起動した時、プラグインの準備ができるまで画面を暗く隠す（プラグインが api.ui.setBootCover(true) にした時）。
@@ -8093,7 +8098,8 @@
     document.getElementById('btnGridFiner')?.addEventListener('click', () => stepGridDivision(1));
 
     // 赤い再生バー（Playhead）を基準位置として縦拡大・縮小を行う関数
-    function applyVerticalZoom(newMeasureHeightPx) {
+    // anchorClientY を渡すと、その高さ（画面の座標）にある譜面の位置を動かさずに拡大・縮小する（2 本指の拡大など）
+    function applyVerticalZoom(newMeasureHeightPx, anchorClientY = null) {
       const container = document.getElementById('chartScrollContainer');
       const viewH = container ? container.clientHeight : 600;
       const oldPlayY = tickToY(state.playback.currentTick);
@@ -8101,18 +8107,23 @@
 
       // ズーム前に赤い再生バーが画面内に見えていればその画面内相対位置を維持し、画面外なら画面中央を基準にする
       const relYBefore = oldPlayY - oldScrollTop;
-      const anchorOffsetInView = (relYBefore >= 24 && relYBefore <= viewH - 24)
+      let anchorOffsetInView = (relYBefore >= 24 && relYBefore <= viewH - 24)
         ? relYBefore
         : (viewH / 2);
+      let anchorTick = state.playback.currentTick;
+      if (container && Number.isFinite(anchorClientY)) {
+        anchorOffsetInView = Math.max(0, Math.min(viewH, anchorClientY - container.getBoundingClientRect().top));
+        anchorTick = yToTick(oldScrollTop + anchorOffsetInView, false);
+      }
 
       state.measureHeightPx = Math.max(500, Math.min(38400, Math.round(newMeasureHeightPx)));
       document.getElementById('sliderVZoom').value = measureHeightToSlider(state.measureHeightPx);
       document.getElementById('lblVZoom').textContent = `${state.measureHeightPx}px`;
       resizeAndRenderCanvas();
 
-      // ズーム後の赤い再生バーのY座標を求め、同じ画面内位置に留まるようスクロール位置を即座に合わせる
+      // ズーム後の赤い再生バー（または指定した位置）のY座標を求め、同じ画面内位置に留まるようスクロール位置を即座に合わせる
       if (container) {
-        const newPlayY = tickToY(state.playback.currentTick);
+        const newPlayY = tickToY(anchorTick);
         container.scrollTop = Math.max(0, newPlayY - anchorOffsetInView);
         renderChart();
       }
@@ -11486,6 +11497,16 @@
           get pxPerTick() { return state.measureHeightPx / TICKS_PER_MEASURE; },
           get canvas() { return chartCanvas; },
           get scrollContainer() { return chartScrollContainer; },
+          // 縦の拡大（1 小節の高さ px、500〜38400）。clientY を渡すと、その高さ（画面の座標）にある譜面の位置を動かさずに拡大する
+          setMeasureHeight(px, { clientY = null } = {}) {
+            const v = Number(px);
+            if (!Number.isFinite(v) || v <= 0) return;
+            applyVerticalZoom(v, Number.isFinite(Number(clientY)) && clientY !== null ? Number(clientY) : null);
+          },
+          // レーンの幅を、表示の横幅に合わせる（「レーンを画面幅に」のボタンと同じ）
+          fitLanes(save = true) { fitLanesToView(Boolean(save)); },
+          // タッチでノーツをつかんで動かしている・置いている最中か（2 本指の操作と重ならないように）
+          get touchEditing() { return touchCapturedId !== null; },
           visibleTicks() {
             const top = getChartViewTop();
             const a = yToTick(top, false);
