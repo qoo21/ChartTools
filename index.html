@@ -4,6 +4,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <script>
+    // iPad・iPhone：入力欄を押した時に、画面が勝手に拡大されないようにする（指での拡大は Safari がそのまま許す）
+    (function () {
+      var ua = navigator.userAgent || '';
+      if (!(/iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1))) return;
+      var m = document.querySelector('meta[name="viewport"]');
+      if (m && !/maximum-scale/.test(m.content)) m.content += ', maximum-scale=1';
+    })();
+  </script>
   <meta name="theme-color" content="#141416" />
   <!-- iPad・iPhone で「ホーム画面に追加」して開くと、Safari のアドレスバーなしで全画面のように使える（全画面の機能を使わないので、連打の警告も出ない） -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -103,6 +112,12 @@
     html,
     body {
       height: 100%;
+    }
+
+    /* スマホ・iPad：ボタンなどを続けてタップした時に、画面が拡大されないようにする（2 本指の拡大はそのまま） */
+    html,
+    body {
+      touch-action: manipulation;
     }
 
     body {
@@ -2173,7 +2188,7 @@
       <button id="btnLoop" class="btn btn-icon is-on" title="ループ再生"><i class="fa-solid fa-repeat"></i></button>
 
       <div class="readout" title="再生位置">
-        <span class="readout-main"><span id="lblCurrentTick">0000</span><span id="lblTotalTicks" class="readout-sub"> / 7680t</span></span>
+        <span class="readout-main"><span id="lblCurrentTick">0.00</span><span id="lblTotalTicks" class="readout-sub"> / 0.00s</span></span>
         <span class="readout-sub"><span id="lblMeasureBeat">M1 : B1</span> · <span id="lblCurrentSec">0.00s</span></span>
       </div>
       <input id="sliderPlayhead" type="range" min="0" max="7680" step="1" value="0" style="width:120px"
@@ -2241,7 +2256,7 @@
         <option value="1920">1/1920</option>
       </select>
       <button id="btnGridFiner" type="button" class="btn btn-sm btn-icon" title="グリッドを細かくする（＋ キー）"><i class="fa-solid fa-plus"></i></button>
-      <span id="lblGridTickInfo" class="lbl mono hide-compact wide-only" title="1 グリッドの Tick 数">240t</span>
+      <span id="lblGridTickInfo" class="lbl mono hide-compact wide-only" title="1 グリッドの長さ（最初の BPM で）">125ms</span>
 
       <div class="divider"></div>
 
@@ -2318,8 +2333,11 @@
                 <input id="presetCodeIdInput" type="text" value="TAP" placeholder="TAP" class="field mono" style="text-transform:uppercase" /></label>
             </div>
             <label class="form-item"><span class="lbl">種類（配置時は3レーン幅、端のドラッグで伸縮）</span>
-              <select id="presetTypeSelect" class="field">
+              <select id="presetTypeSelect" class="field" title="プレイでの叩き方。トレース：判定の間に一度でも触れれば（押さえたままでもよい）PERFECT。フリック：タップしてから決まった向きに指をはらう。トレースフリック：タップしなくても、指をはらえばよい（向きは問わない）">
                 <option value="tap">タップ</option>
+                <option value="trace">トレース</option>
+                <option value="flick">フリック</option>
+                <option value="traceFlick">トレースフリック</option>
                 <option value="slide">スライド</option>
               </select></label>
 
@@ -2346,12 +2364,17 @@
                   <label class="chip" title="スライドの終点に合体させられる"><input id="chkPlaceEnd" type="checkbox" />スライドの終点</label>
                 </div></div>
               <div class="grid2">
-                <label class="form-item"><span class="lbl">中央マーク</span>
-                  <select id="selectTapCenterMark" class="field">
+                <div class="form-item"><span class="lbl">中央マーク（両方も選べます）</span>
+                  <select id="selectTapCenterMark" class="field hidden">
                     <option value="none">なし</option>
                     <option value="flick">^ フリック</option>
                     <option value="dot">・ 粒</option>
-                  </select></label>
+                    <option value="flickDot">^ フリック ＋ ・ 粒</option>
+                  </select>
+                  <div class="chip-row" style="grid-template-columns:repeat(2,1fr)">
+                    <label class="chip" title="ノーツの真ん中に矢印（^）"><input id="chkMarkFlick" type="checkbox" />^ 矢印</label>
+                    <label class="chip" title="ノーツの真ん中に粒（・）"><input id="chkMarkDot" type="checkbox" />・ 粒</label>
+                  </div></div>
                 <label class="check-row" style="align-self:end;height:26px">タップ音
                   <input id="chkTapPlaySound" type="checkbox" checked /></label>
               </div>
@@ -2634,11 +2657,11 @@
               <select id="inspectPresetSelect" class="field"></select></label>
             <div class="grid2">
               <div class="form-item">
-                <label class="lbl" for="inspectTickInput">開始 Tick (0〜7680)</label>
-                <input id="inspectTickInput" type="number" min="0" max="7680" step="1" class="field num" />
+                <label class="lbl" for="inspectTickInput">開始（秒）</label>
+                <input id="inspectTickInput" type="number" min="0" step="0.001" class="field num" />
               </div>
               <div class="form-item">
-                <span class="lbl">時間</span>
+                <span class="lbl">小節・拍</span>
                 <input id="inspectTimeMs" type="text" disabled class="field num" style="color:var(--dim)" />
               </div>
               <div class="form-item">
@@ -3055,16 +3078,17 @@
     // 譜面の長さ（小節数・拍子）が変わった時に、長さを表示している部品をそろえる
     function refreshTimelineUI() {
       const lblTotal = document.getElementById('lblTotalTicks');
-      if (lblTotal) lblTotal.textContent = ` / ${TOTAL_TICKS}t`;
+      if (lblTotal) lblTotal.textContent = ` / ${(ticksToMs(TOTAL_TICKS) / 1000).toFixed(2)}s`;
 
       const sliderPlay = document.getElementById('sliderPlayhead');
       if (sliderPlay) sliderPlay.max = TOTAL_TICKS;
 
       const inspectTick = document.getElementById('inspectTickInput');
       if (inspectTick) {
-        inspectTick.max = TOTAL_TICKS;
+        const totalSec = ticksToMs(TOTAL_TICKS) / 1000;
+        inspectTick.max = totalSec.toFixed(3);
         const tickLabel = inspectTick.previousElementSibling;
-        if (tickLabel) tickLabel.textContent = `開始 Tick (0〜${TOTAL_TICKS})`;
+        if (tickLabel) tickLabel.textContent = `開始（秒）0〜${totalSec.toFixed(2)}`;
       }
 
       if (state.playback.currentTick > TOTAL_TICKS) {
@@ -3467,6 +3491,22 @@
       };
     }
 
+    // タップの叩き方：タップ・トレース（触れていればよい）・フリック（タップしてはらう）・トレースフリック（はらうだけ）
+    // （起動の途中でも呼ばれるので、const の表ではなく関数にする）
+    function isTapKind(v) { return v === 'tap' || v === 'trace' || v === 'flick' || v === 'traceFlick'; }
+    function tapKindLabel(k) { return ({ tap: 'タップ', trace: 'トレース', flick: 'フリック', traceFlick: 'トレースフリック' })[k] || 'タップ'; }
+    function tapKindBadge(k) { return ({ tap: 'TAP', trace: 'TRACE', flick: 'FLICK', traceFlick: 'TRACE FLICK' })[k] || 'TAP'; }
+    // 以前の譜面（叩き方を持っていない）：名前と中央マークから決める（プレイのプラグインの決め方と同じ）
+    function guessTapKind(p) {
+      const name = String(p?.name || '');
+      if (/トレースフリック|trace\s*flick/i.test(name)) return 'traceFlick';
+      if (p?.tapCenterMark === 'flick' || p?.tapCenterMark === 'flickDot' || /フリック|flick/i.test(name)) return 'flick';
+      if (p?.tapCenterMark === 'dot' || /トレース|trace/i.test(name)) return 'trace';
+      return 'tap';
+    }
+    // 「種類」の選択（tap / trace / flick / traceFlick / slide）→ ノーツ設定の type と叩き方
+    function typeOfTypeSelect(v) { return v === 'slide' ? 'slide' : 'tap'; }
+    function kindOfTypeSelect(v) { return isTapKind(v) ? v : 'tap'; }
     // タップのノーツ設定を置ける所：単体・スライドの始点・スライドの終点（チェックで選ぶ）。
     // 以前の tapPlacementRole（4 つから選ぶ：any / slideOnly / slideStartOnly / slideEndOnly）からも読む
     function tapPlaceFlags(tp) {
@@ -3573,8 +3613,11 @@
       const placeFlags = tapPlaceFlags(p);
       const tapPlacementRole = placementRoleOf(placeFlags);
 
-      const allowedCenterMarks = ['none', 'flick', 'dot'];
+      // 中央マーク：なし・矢印・粒・矢印と粒の両方（flickDot）
+      const allowedCenterMarks = ['none', 'flick', 'dot', 'flickDot'];
       const tapCenterMark = allowedCenterMarks.includes(p.tapCenterMark) ? p.tapCenterMark : 'none';
+      // タップの叩き方（タップ・トレース・フリック・トレースフリック）。以前の譜面は、名前と中央マークから決める
+      const tapKind = p.type === 'slide' ? undefined : (isTapKind(p.tapKind) ? p.tapKind : guessTapKind(p));
       const playSound = p.playSound !== undefined ? Boolean(p.playSound) : true;
 
       // 中継点の見た目は「何もなし」（既定）か「粒」。以前の「バー」は何もなしとして扱う
@@ -3599,6 +3642,7 @@
         placeAsStart: placeFlags.start,
         placeAsEnd: placeFlags.end,
         tapCenterMark,
+        tapKind,
         playSound,
         slideRelayStyle,
         slideStartSound,
@@ -3651,6 +3695,11 @@
       return [...validIds, 'none'];
     }
 
+    // 向きを付けたフリックは矢印を出す（粒もある時は両方）
+    function markWithFlickDir(mark, hasDir) {
+      if (!hasDir) return mark || 'none';
+      return mark === 'dot' || mark === 'flickDot' ? 'flickDot' : 'flick';
+    }
     // フリックの矢印の大きさ（ノーツの幅で変える。3 レーンの幅で 1 倍。3D・画像の書き出しも同じ式）
     function flickArrowScale(widthLanes) {
       const w = Number(widthLanes);
@@ -3790,12 +3839,23 @@
       return Math.max(minTick, Math.min(maxTick, Math.round(desiredTick)));
     }
 
+    // レーンの外側（プラグイン「レーンの外側」）の中にあって、本来のレーンに少しでもかかるノーツか（プレイで判定するノーツ）
+    function isRuleJudgedOutsideNote(note) {
+      if (!(pluginOuterLanes > 0)) return false;
+      const pts = note.type === 'slide' ? (note.points || []) : [note];
+      if (!pts.length) return false;
+      const within = pts.every(p => p.lane >= 1 - pluginOuterLanes && p.lane + p.width - 1 <= NUM_LANES + pluginOuterLanes);
+      const allOutside = pts.every(p => p.lane + p.width - 1 < 1 || p.lane > NUM_LANES);
+      return within && !allOutside;
+    }
     // Extract testable judgment nodes from all notes (Taps + Slide Start/End/Relays)
     function buildTestableNodes() {
       const nodes = [];
       state.notes.forEach(note => {
         if (!isNoteVisible(note)) return; // 非表示レイヤーのノーツはエラー判定から除外
-        if (isNoteOutsideLanes(note)) return; // レーン外にはみ出したノーツも判定対象外
+        // レーン外にはみ出したノーツは判定対象外。ただし「レーンの外側」を足している時、その中にあって
+        // 本来のレーンに少しでもかかるノーツは、プレイと同じように判定するので、ここでも見る
+        if (isNoteOutsideLanes(note) && !isRuleJudgedOutsideNote(note)) return;
         const presetIdx = state.presets.findIndex(p => p.id === note.presetId);
         const presetNum = presetIdx >= 0 ? presetIdx + 1 : 1;
         const preset = normalizePreset(getPresetById(note.presetId));
@@ -3815,6 +3875,7 @@
             width: note.width,
             horizExtTotal: preset.judgeWidthExtTotal,
             judgment: normalizeJudgment(preset.judgment),
+            tapKind: preset.tapKind || 'tap',
             mergedTapName: null,
             effectiveRules: preset.errorRules || [],
             // このノーツに付く条件の一覧の名前（条件式の入力画面で「当てはまるノーツ」を数える時に使う）
@@ -3858,6 +3919,7 @@
               width: pt.width,
               horizExtTotal: spec.horizExtTotal,
               judgment: normalizeJudgment(spec.judgment),
+              tapKind: mergedTapPreset ? (normalizePreset(mergedTapPreset).tapKind || 'tap') : null,
               mergedTapName: spec.isMerged ? spec.mergedTapName : null,
               effectiveRules: combinedRules,
               ruleOwners: [...((isStart || isEnd) && spec.rulesOwner ? [spec.rulesOwner] : []), ...(!isEnd ? [`${preset.id}:slideHoldErrorRules`] : [])],
@@ -4118,6 +4180,14 @@
       return ast;
     }
 
+    // ---- 叩き方つきの文字（type・role）：'tap' などの元の名前とも、'trace' などの叩き方とも等しい ----
+    function ruleKindName(k) { return k === 'traceFlick' ? 'trace_flick' : (k || ''); }
+    function ruleKindValue(base, tapKind) {
+      if (!tapKind || tapKind === 'tap') return base;
+      return { __ruleKindStr: true, base, kind: ruleKindName(tapKind) };
+    }
+    function ruleIsKindStr(v) { return Boolean(v && v.__ruleKindStr); }
+    const ruleKindNorm = (s) => String(s).toLowerCase().replace(/[\s_-]/g, '');
     // ---- 値の扱い（null は「該当なし」。計算に混ざると null、比較すると false） ----
     function ruleIsNode(v) { return Boolean(v && typeof v === 'object' && v.note && v.noteId !== undefined); }
     function ruleIsWin(v) { return Boolean(v && v.__ruleWin); }
@@ -4146,6 +4216,14 @@
       const x = a === undefined ? null : a;
       const y = b === undefined ? null : b;
       if (x === null || y === null) return x === y;
+      // 叩き方つきの文字：元の名前（'tap' など）か叩き方（'trace' など）と同じなら等しい。どちらも叩き方つきなら、元の名前と叩き方の両方
+      if (ruleIsKindStr(x) || ruleIsKindStr(y)) {
+        if (ruleIsKindStr(x) && ruleIsKindStr(y)) return ruleKindNorm(x.base) === ruleKindNorm(y.base) && ruleKindNorm(x.kind) === ruleKindNorm(y.kind);
+        const k = ruleIsKindStr(x) ? x : y;
+        const s = ruleIsKindStr(x) ? y : x;
+        if (typeof s !== 'string') return false;
+        return ruleKindNorm(s) === ruleKindNorm(k.base) || ruleKindNorm(s) === ruleKindNorm(k.kind);
+      }
       const isScalar = v => ['string', 'number', 'boolean'].includes(typeof v);
       if (typeof x === 'string' || typeof y === 'string') {
         if (!isScalar(x) || !isScalar(y)) return false;
@@ -4316,8 +4394,18 @@
       right: { type: 'num', get: n => n.lane + n.width - 1 },
       width: { type: 'num', get: n => n.width },
       center: { type: 'num', get: n => n.lane + (n.width - 1) / 2 },
-      type: { type: 'str', get: n => n.note.type },
-      role: { type: 'str', get: n => RULE_ROLE_NAMES[n.roleCode] || 'tap' },
+      // type：'tap' か 'slide'。タップは叩き方（'trace' 'flick' 'trace_flick'）とも等しくなる（self.type == 'tap' はどの叩き方のタップでもはい）
+      type: { type: 'str', get: n => (n.note.type === 'tap' ? ruleKindValue('tap', n.tapKind) : 'slide') },
+      // role：'tap' 'start' 'relay' 'end'。その点の叩き方（タップの叩き方・合体したタップの叩き方）とも等しくなる
+      role: { type: 'str', get: n => ruleKindValue(RULE_ROLE_NAMES[n.roleCode] || 'tap', n.tapKind) },
+      // 叩き方：'tap' 'trace' 'flick' 'trace_flick'（スライドの合体していない点は 'slide'）
+      kind: { type: 'str', get: n => (n.tapKind ? ruleKindName(n.tapKind) : 'slide') },
+      is_trace: { type: 'bool', get: n => n.tapKind === 'trace' },
+      is_flick: { type: 'bool', get: n => n.tapKind === 'flick' },
+      is_trace_flick: { type: 'bool', get: n => n.tapKind === 'traceFlick' },
+      // BAD の判定幅の早い側・遅い側（f）。self.bad.early と同じ
+      early: { type: 'num', get: n => Number(n.judgment?.badMinusF) || 0 },
+      late: { type: 'num', get: n => Number(n.judgment?.badPlusF) || 0 },
       is_tap: { type: 'bool', get: n => n.roleCode === 1 },
       is_slide: { type: 'bool', get: n => n.note.type === 'slide' },
       is_start: { type: 'bool', get: n => n.roleCode === 2 },
@@ -4354,9 +4442,108 @@
     };
 
     // ---- 相手探し ----
+    // exists( ) などの式に「時間差が○以内」「判定幅が重なる」のような条件がある時は、その時間の範囲のノーツだけを見る
+    // （compileRuleCall が ctx.oneShotBound に、時間差の上限（f）を入れてから呼ぶ。最初の 1 回だけ使う）。
+    // 見る順番は、範囲を絞らない時と同じ（並びの順）にする（見つかった相手・メッセージが変わらないように）
     function ruleCandidates(ctx) {
+      const bound = ctx.oneShotBound;
+      ctx.oneShotBound = undefined;
+      if (bound !== undefined && Number.isFinite(bound)) return ruleCandidatesNear(ctx, bound);
       if (!ctx.candidates) ctx.candidates = ctx.pass.nodes.filter(n => n.noteId !== ctx.self.noteId);
       return ctx.candidates;
+    }
+    // 時間の順に並べた一覧（1 回のチェックで 1 回だけ作る）
+    function ruleTimeIndex(pass) {
+      if (pass.timeIndex) return pass.timeIndex;
+      pass.nodes.forEach((n, i) => {
+        n.__ri = i;
+        n.__rf = ticksToFrames(n.tick);
+      });
+      const order = [...pass.nodes].sort((a, b) => a.__rf - b.__rf || a.__ri - b.__ri);
+      const frames = new Float64Array(order.length);
+      order.forEach((n, i) => { frames[i] = n.__rf; });
+      // 判定幅の一番大きい値（f）。「判定幅が重なる」の範囲に使う
+      let maxJ = 0;
+      pass.nodes.forEach(n => {
+        const j = n.judgment;
+        if (!j) return;
+        Object.keys(j).forEach(k => { const v = Number(j[k]); if (Number.isFinite(v) && v > maxJ) maxJ = v; });
+      });
+      pass.timeIndex = { order, frames, maxJ };
+      return pass.timeIndex;
+    }
+    function ruleCandidatesNear(ctx, bound) {
+      const ti = ruleTimeIndex(ctx.pass);
+      const f = ctx.self.__rf !== undefined ? ctx.self.__rf : ticksToFrames(ctx.self.tick);
+      const lo = f - bound - 1e-6;
+      const hi = f + bound + 1e-6;
+      let a = 0;
+      let b = ti.frames.length;
+      while (a < b) {
+        const m = (a + b) >> 1;
+        if (ti.frames[m] < lo) a = m + 1;
+        else b = m;
+      }
+      const out = [];
+      for (let i = a; i < ti.order.length && ti.frames[i] <= hi; i++) {
+        const n = ti.order[i];
+        if (n.noteId !== ctx.self.noteId) out.push(n);
+      }
+      if (out.length > 1) out.sort((x, y) => x.__ri - y.__ri);
+      return out;
+    }
+    // 式（exists( ) などのカッコの中）が当てはまり得る、時間差の上限（f）を返す関数。分からない時は null（全部を見る）
+    // and はどちらか一方の上限、or は大きい方。other.gap_ticks / gap / gap_ms を < <= == で数と比べる式、
+    // self と other の判定幅の overlap・time_overlap・late_overlap・early_overlap（0 より大きい）が上限になる
+    function ruleFilterBound(ast) {
+      const INF = null;
+      const isOtherMember = (n, names) => n && n.k === 'member' && n.obj && n.obj.k === 'name' && n.obj.name === 'other' && names.includes(n.name);
+      const rootName = (n) => {
+        let x = n;
+        while (x && (x.k === 'member' || x.k === 'method')) x = x.obj;
+        return x && x.k === 'name' ? x.name : null;
+      };
+      const isOverlapCall = (n) => n && n.k === 'call' && ['overlap', 'time_overlap', 'late_overlap', 'early_overlap'].includes(n.name) && n.args.length === 2
+        && ((rootName(n.args[0]) === 'self' && rootName(n.args[1]) === 'other') || (rootName(n.args[0]) === 'other' && rootName(n.args[1]) === 'self'));
+      const maxMsPerTick = () => Math.max(...timeMap.tempos.map(t => t.msPerBeat / TICKS_PER_BEAT));
+      const winBound = (pass) => ruleTimeIndex(pass).maxJ * 2 + 0.5;
+      const flip = { '<': '>', '<=': '>=', '>': '<', '>=': '<=', '==': '==', '=': '=' };
+      const walk = (n) => {
+        if (!n) return INF;
+        if (n.k === 'and') {
+          const a = walk(n.a);
+          const b = walk(n.b);
+          if (!a) return b;
+          if (!b) return a;
+          return (pass) => Math.min(a(pass), b(pass));
+        }
+        if (n.k === 'or') {
+          const a = walk(n.a);
+          const b = walk(n.b);
+          if (!a || !b) return INF;
+          return (pass) => Math.max(a(pass), b(pass));
+        }
+        if (isOverlapCall(n)) return winBound;
+        if (n.k === 'cmp' && n.items.length === 2) {
+          let [l, r] = n.items;
+          let op = n.ops[0];
+          if (r.k !== 'num' && l.k === 'num') {
+            [l, r] = [r, l];
+            op = flip[op] || op;
+          }
+          if (r.k !== 'num') return INF;
+          const c = Number(r.v);
+          if (!Number.isFinite(c)) return INF;
+          if (isOverlapCall(l) && ((op === '>' && c >= 0) || ((op === '>=' || op === '==' || op === '=') && c > 0))) return winBound;
+          if (!['<', '<=', '==', '='].includes(op) || c < 0) return INF;
+          if (isOtherMember(l, ['gap'])) return () => c;
+          if (isOtherMember(l, ['gap_ms'])) return () => (c * FPS_BASE) / 1000;
+          if (isOtherMember(l, ['gap_ticks'])) return () => (c * maxMsPerTick() * FPS_BASE) / 1000;
+          return INF;
+        }
+        return INF;
+      };
+      return walk(ast);
     }
     function ruleWithOther(ctx, cand, fn) {
       const saved = ctx.other;
@@ -4558,7 +4745,7 @@
       'grid_late', 'grid_late_ms', 'grid_late_tick', 'grid_early', 'grid_early_ms', 'grid_early_tick',
       'grid_offset', 'grid_offset_ms', 'grid_offset_tick'
     ];
-    const RULE_GLOBAL_NAMES = ['self', 'other', 'next', 'prev', 'seg', 'bpm', 'lanes', 'notes', 'measures', 'true', 'false', 'null'];
+    const RULE_GLOBAL_NAMES = ['self', 'other', 'next', 'prev', 'nearest', 'seg', 'bpm', 'lanes', 'notes', 'measures', 'true', 'false', 'null'];
     const RULE_TYPE_LABELS = { num: '数値', bool: 'はい/いいえ', str: '文字', node: 'ノーツ', win: '判定幅', seg: 'スライドの区間', any: '値', null: 'null' };
 
     function ruleLevenshtein(a, b) {
@@ -4593,6 +4780,8 @@
           if (!scope.inFilter) throw new RuleSyntaxError('other は exists( ) や count( ) などのカッコの中でだけ使えます', node.start, node.end);
           return { type: 'node', fn: ctx => ctx.other };
         case 'next': return { type: 'node', fn: ctx => ruleFindRelative(ctx, 1, null) };
+        // nearest も next・prev と同じように、カッコなしで使える（一番近いノーツ）
+        case 'nearest': return { type: 'node', fn: ctx => ruleFindNearest(ctx, null) };
         case 'prev': return { type: 'node', fn: ctx => ruleFindRelative(ctx, -1, null) };
         case 'seg': return { type: 'seg', fn: ctx => ruleSegmentOf(ctx.self) };
         case 'bpm': return { type: 'num', fn: () => state.bpm };
@@ -4626,7 +4815,9 @@
           if (prop.rel && node.obj.k === 'name' && node.obj.name === 'self') {
             throw errAt(`「${raw}」は相手との関係を表す値なので self には付けられません（other.${name} や next.${name} のように使います）`);
           }
-          return { type: prop.type, fn: ctx => { const o = obj.fn(ctx); return ruleIsNode(o) ? prop.get(o, ctx) : null; } };
+          // 何か分からない値（if( ) の結果など）に .early・.late を付けた時は、判定幅ならその値
+          const winProp = obj.type === 'any' ? RULE_WIN_PROPS[name] : null;
+          return { type: prop.type, fn: ctx => { const o = obj.fn(ctx); if (ruleIsNode(o)) return prop.get(o, ctx); return winProp && ruleIsWin(o) ? winProp.get(o) : null; } };
         }
         if (obj.type === 'node') {
           throw errAt(`ノーツに「${raw}」という値はありません${ruleSuggestText(name, Object.keys(RULE_NODE_PROPS))}`);
@@ -4682,6 +4873,21 @@
       }
       const argScope = def.filter ? { ...scope, inFilter: true } : scope;
       const args = node.args.map(a => compileRuleAst(a, argScope).fn);
+      // 相手を探す関数：カッコの中の条件から、見る時間の範囲を決めておく（sum は 2 つ目が条件）
+      const boundFn = def.filter ? ruleFilterBound(node.args[node.name === 'sum' ? 1 : 0]) : null;
+      if (boundFn) {
+        return {
+          type: def.type,
+          fn: ctx => {
+            ctx.oneShotBound = boundFn(ctx.pass);
+            try {
+              return def.run(args, ctx);
+            } finally {
+              ctx.oneShotBound = undefined;
+            }
+          }
+        };
+      }
       return { type: def.type, fn: ctx => def.run(args, ctx) };
     }
 
@@ -5615,7 +5821,8 @@
       if (typeof v === 'number') return String(ruleRound2(v));
       if (typeof v === 'boolean') return v ? 'はい' : 'いいえ';
       if (typeof v === 'string') return v;
-      if (ruleIsNode(v)) return `${v.preset?.name || v.codeId}（L${v.lane}・${v.tick}t）`;
+      if (ruleIsKindStr(v)) return `${v.base}（${v.kind}）`;
+      if (ruleIsNode(v)) return `${v.preset?.name || v.codeId}（L${v.lane}・${(ticksToMs(v.tick) / 1000).toFixed(3)}s）`;
       if (ruleIsWin(v)) return `${ruleWinWidth(v)}f`;
       if (ruleIsSeg(v)) return `${RULE_SEG_PROPS.shift.get(v)}L / ${RULE_SEG_PROPS.time.get(v)}f`;
       return String(v);
@@ -5650,6 +5857,8 @@
       const problems = new Map();
       const allNodes = buildTestableNodes();
       const pass = { nodes: allNodes };
+      const checkStartedAt = performance.now();
+
 
       // 読めない条件式は、まだそのノーツを置いていなくても知らせる
       const noteProblem = (rule, owner, noteId = null) => {
@@ -5707,7 +5916,7 @@
           const other = ctx.matched;
           errors.push(makeError({
             other,
-            detailBadge: other ? `相手: ${other.preset?.name || other.codeId}（L${other.lane}・${other.tick}t）` : ''
+            detailBadge: other ? `相手: ${other.preset?.name || other.codeId}（L${other.lane}・${(ticksToMs(other.tick) / 1000).toFixed(3)}s）` : ''
           }, ctx));
         });
       });
@@ -5716,7 +5925,10 @@
       state.ruleProblems = [...problems.values()];
       renderErrorMonitorPanel();
       refreshRuleEditorStatuses();
+      lastErrorCheckAt = performance.now();
+      lastErrorCheckMs = lastErrorCheckAt - checkStartedAt;
     }
+
 
     function renderErrorMonitorPanel() {
       const badge = document.getElementById('badgeErrorCount');
@@ -5768,7 +5980,7 @@
         card.innerHTML = `
           <div class="row" style="align-items:flex-start">
             <span class="error-card-title">${escapeHtml(err.message)}</span>
-            <span class="mono error-card-pos">L${err.lane} · ${err.tick}t</span>
+            <span class="mono error-card-pos">L${err.lane} · ${(ticksToMs(err.tick) / 1000).toFixed(3)}s</span>
           </div>
           <div class="error-card-body">${escapeHtml(err.solution)}</div>
         `;
@@ -6589,7 +6801,10 @@
       return Math.max(0, Math.min(Math.max(0, cssH - chartCanvasViewH), raw));
     }
 
-    // 描画要求を1フレームにまとめる（mousemove 等で毎イベント全描画・全エラーチェックしないため）
+    // エラーのチェックに最後にかかった時間（大きな譜面で、続けて変わる間はチェックを間引くため。起動の途中でも使えるよう var）
+    var lastErrorCheckAt = 0;
+    var lastErrorCheckMs = 0;
+    var errorCheckTimer = null;    // 描画要求を1フレームにまとめる（mousemove 等で毎イベント全描画・全エラーチェックしないため）
     const pendingFrameTasks = new Set();
     let pendingFrameId = null;
     function scheduleFrameUpdate(...tasks) {
@@ -6599,7 +6814,21 @@
         pendingFrameId = null;
         const tasksToRun = new Set(pendingFrameTasks);
         pendingFrameTasks.clear();
-        if (tasksToRun.has('errors')) runAllErrorChecks();
+        if (tasksToRun.has('errors')) {
+          // ドラッグなどで続けて変わる間は、チェックに時間がかかる譜面（大きな譜面）だけ間引く（最後には必ずチェックする）
+          const waitMs = Math.min(300, (lastErrorCheckMs || 0) * 4);
+          const since = performance.now() - (lastErrorCheckAt || 0);
+          if (waitMs > 20 && since < waitMs) {
+            if (!errorCheckTimer) {
+              errorCheckTimer = setTimeout(() => {
+                errorCheckTimer = null;
+                scheduleFrameUpdate('errors');
+              }, waitMs - since);
+            }
+          } else {
+            runAllErrorChecks();
+          }
+        }
         if (tasksToRun.has('inspector')) syncInspectorValues();
         renderChart();
       });
@@ -6802,6 +7031,25 @@
       const tickAtViewBottom = yToTick(viewBottom + 20, false);
       const visibleMinTick = Math.min(tickAtViewTop, tickAtViewBottom);
       const visibleMaxTick = Math.max(tickAtViewTop, tickAtViewBottom);
+      // 見えている所（と少し外。判定幅の帯がはみ出す分として 2 拍）のノーツだけ描く（小節・ノーツが多い譜面でも軽く）
+      const cullMinTick = visibleMinTick - TICKS_PER_BEAT * 2;
+      const cullMaxTick = visibleMaxTick + TICKS_PER_BEAT * 2;
+      const tickInView = (t) => t >= cullMinTick && t <= cullMaxTick;
+      const noteInView = (n) => {
+        if (n.type !== 'slide') return tickInView(n.tick);
+        const p = n.points || [];
+        return p.length > 0 && p[p.length - 1].tick >= cullMinTick && p[0].tick <= cullMaxTick;
+      };
+      // ノーツ設定は 1 回の描画で 1 回だけ整える
+      const renderPresetCache = new Map();
+      const presetForRender = (id) => {
+        let v = renderPresetCache.get(id);
+        if (v === undefined) {
+          v = normalizePreset(getPresetById(id));
+          renderPresetCache.set(id, v);
+        }
+        return v;
+      };
       const rulerLabelX = RULER_LEFT_WIDTH - 8;
       // 小節ごとに、小節の頭からグリッドを数える（拍子が変わっても小節線・拍線にそろう）
       const drawGridRow = (t, isMeasure, isBeat, label, labelIsMeasure) => {
@@ -6850,8 +7098,8 @@
 
       // 4. Judgment Overlays（レーン外のノーツは判定対象外なので描かない）
       for (const note of state.notes) {
-        if (!isNoteVisible(note) || isNoteOutsideLanes(note)) continue;
-        const preset = normalizePreset(getPresetById(note.presetId));
+        if (!noteInView(note) || !isNoteVisible(note) || isNoteOutsideLanes(note)) continue;
+        const preset = presetForRender(note.presetId);
         if (note.type === 'tap') {
           drawJudgmentOverlayForNode(note.lane, note.width, note.tick, preset.judgment, preset.judgeWidthExtTotal, `拡張:+${preset.judgeWidthExtTotal.toFixed(1)}L`);
         } else if (note.type === 'slide' && note.points) {
@@ -6875,12 +7123,26 @@
       // 2Dキャンバス用：ノーツ中央に「^ (フリック：ノーツから上に少し飛び出る位置)」または「・ (粒)」（ノーツ色＋白縁取り）を描画するヘルパー
       const draw2DCenterMark = (centerX, centerY, markType, fillColor = '#06b6d4', opacity = 1.0, noteH = 14, flickDir = null, widthLanes = DEFAULT_NOTE_WIDTH) => {
         if (!markType || markType === 'none') return;
+        // 矢印と粒の両方：粒を描いてから矢印
+        if (markType === 'flickDot') {
+          draw2DCenterMark(centerX, centerY, 'dot', fillColor, opacity, noteH, flickDir, widthLanes);
+          draw2DCenterMark(centerX, centerY, 'flick', fillColor, opacity, noteH, flickDir, widthLanes);
+          return;
+        }
         ctx.save();
         const rgbaFill = hexToRgba(fillColor, opacity);
         if (markType === 'flick') {
-          // 向きの付いたフリックは、ノーツの真ん中を中心に矢印を回す
+          // 向きの付いたフリックは、ノーツの真ん中を中心に矢印を回す。斜めは回さずに横に傾け（広い矢印が長い斜めの線にならないように）、
+          // 左・右は広げない（縦に長くならないように）
           const ang = FLICK_DIR_ANGLES[flickDir] || 0;
-          if (ang) {
+          const deg = ((ang % 360) + 360) % 360;
+          const sideways = deg === 90 || deg === 270;
+          if (deg % 90 !== 0) {
+            ctx.translate(centerX, centerY);
+            if (deg > 90 && deg < 270) ctx.scale(1, -1);
+            ctx.transform(1, 0, deg < 180 ? -0.9 : 0.9, 1, 0, 0);
+            ctx.translate(-centerX, -centerY);
+          } else if (ang) {
             ctx.translate(centerX, centerY);
             ctx.rotate((ang * Math.PI) / 180);
             ctx.translate(-centerX, -centerY);
@@ -6888,10 +7150,17 @@
           // ノーツの上端(centerY - noteH * 0.5)から先端が少し上に飛び出るようにY位置を上へ微調整
           // 矢印の大きさはノーツの幅で変える（3 レーンの幅で今までと同じ大きさ）
           const k = flickArrowScale(widthLanes);
-          const halfW = Math.max(9, noteH * 0.85) * k;
-          const topY = centerY - noteH * 0.5 - noteH * 0.45 * k; // 先端がノーツ上端より約0.45*noteH（×大きさ）上へ飛び出る
-          const botY = centerY + noteH * 0.12;
-          const thickness = Math.max(4.5, noteH * 0.42) * (0.6 + 0.4 * k);
+          // 横幅はノーツの横幅に合わせる（ノーツの幅の約 6 割。狭いノーツは今までの大きさ）。横に広がった分、高さも少し
+          const baseHalf = Math.max(9, noteH * 0.85);
+          const noteWpx = sideways ? 0 : Math.max(0, (Number(widthLanes) || DEFAULT_NOTE_WIDTH) * state.laneWidthPx - 4);
+          const halfW = Math.max(baseHalf * k, Math.min(noteWpx * 0.32, noteWpx * 0.48));
+          const kh = Math.min(2.2, Math.max(k, Math.sqrt(halfW / baseHalf)));
+          // 広くした分（0〜1）だけ、矢印をノーツの上へ持ち上げる（羽がノーツに重なって見えにくくならないように）
+          const widen = Math.max(0, Math.min(1, halfW / Math.max(1e-6, baseHalf * k) - 1));
+          const lift = noteH * 0.62 * widen;
+          const topY = centerY - noteH * 0.5 - noteH * 0.45 * kh - lift; // 先端がノーツ上端より約0.45*noteH（×大きさ）上へ飛び出る
+          const botY = centerY + noteH * 0.12 - lift;
+          const thickness = Math.max(4.5, noteH * 0.42) * (0.6 + 0.4 * kh);
           ctx.beginPath();
           ctx.moveTo(centerX - halfW, botY);
           ctx.lineTo(centerX, topY);
@@ -6926,8 +7195,8 @@
 
       const preparedSlides = [];
       for (const slide of allSlides) {
-        if (slide !== state.activeSlideDraft && !isNoteVisible(slide)) continue;
-        const preset = normalizePreset(getPresetById(slide.presetId));
+        if (slide !== state.activeSlideDraft && (!noteInView(slide) || !isNoteVisible(slide))) continue;
+        const preset = presetForRender(slide.presetId);
         const color = getSlideNoteColor(slide, preset);
         const isSelected = slide.id === state.selectedNoteId || state.selectedNoteIds.includes(slide.id);
         const isDraft = slide === state.activeSlideDraft;
@@ -7064,7 +7333,7 @@
             // 通常のノーツバー表示（合体時も黄色枠や二重白枠を付けず、通常のタップと同じ白枠1本で描画）
             const mergedTapId = spec.isMerged ? (idx === 0 ? (slide.startTapPresetId ?? preset.startTapPresetId) : (slide.endTapPresetId ?? preset.endTapPresetId)) : null;
             // 向きを付けたフリックの終点は、印が無くても矢印を出す
-            const nodeMark = slide.flickDir && spec.role === 'end' ? 'flick' : spec.centerMark;
+            const nodeMark = markWithFlickDir(spec.centerMark, slide.flickDir && spec.role === 'end');
             const drawnNode = drawNoteByPlugin({
               ctx, kind: 'node', role: spec.role, note: slide, preset, presetId: mergedTapId || slide.presetId, pointIndex: idx, widthLanes: pt.width,
               x: x + 2, y, w: Math.max(6, w - 4), h: nodeH, color: spec.color, opacity: spec.colorOpacity ?? 1.0,
@@ -7095,8 +7364,8 @@
 
       // 6. Taps (すべてのスライド帯よりも上に描画)
       for (const note of state.notes) {
-        if (note.type !== 'tap' || !isNoteVisible(note)) continue;
-        const preset = normalizePreset(getPresetById(note.presetId));
+        if (note.type !== 'tap' || !tickInView(note.tick) || !isNoteVisible(note)) continue;
+        const preset = presetForRender(note.presetId);
         const color = preset ? preset.color : '#06b6d4';
         const isSelected = note.id === state.selectedNoteId || state.selectedNoteIds.includes(note.id);
         const x = laneToX(note.lane);
@@ -7109,7 +7378,7 @@
         const drawnTap = drawNoteByPlugin({
           ctx, kind: 'tap', role: 'tap', note, preset, presetId: note.presetId, pointIndex: null, widthLanes: note.width,
           x: x + 2, y, w: Math.max(6, w - 4), h: noteH, color, opacity: preset.colorOpacity ?? 1.0,
-          mark: note.flickDir ? 'flick' : preset.tapCenterMark, flickDir: note.flickDir || null, selected: isSelected, selectColor: SELECT_COLOR
+          mark: markWithFlickDir(preset.tapCenterMark, note.flickDir), flickDir: note.flickDir || null, selected: isSelected, selectColor: SELECT_COLOR
         });
         if (!drawnTap) {
           ctx.fillStyle = hexToRgba(color, preset.colorOpacity ?? 1.0);
@@ -7121,7 +7390,7 @@
           ctx.fill();
           ctx.stroke();
 
-          draw2DCenterMark(x + w / 2, y, note.flickDir ? 'flick' : preset.tapCenterMark, color, preset.colorOpacity ?? 1.0, noteH, note.flickDir, note.width);
+          draw2DCenterMark(x + w / 2, y, markWithFlickDir(preset.tapCenterMark, note.flickDir), color, preset.colorOpacity ?? 1.0, noteH, note.flickDir, note.width);
         }
 
         if (isSelected || state.currentTool === 'select') {
@@ -7139,7 +7408,9 @@
       if (state.detectedErrors && state.detectedErrors.length > 0) {
         ctx.save();
         state.detectedErrors.forEach(err => {
+          if (!tickInView(err.tick)) return;
           const ex = laneToX(err.lane);
+
           const ew = (err.width || 3) * state.laneWidthPx;
           const ey = tickToY(err.tick);
           const noteH = 14;
@@ -7320,7 +7591,7 @@
       }
       const laneText = pt.width > 1 ? `L${pt.lane}–${pt.lane + pt.width - 1}` : `L${pt.lane}`;
       const rows = [
-        ['位置', `${formatMeasureBeat(pt.tick).replace(/\s/g, '')} · ${pt.tick}t`],
+        ['位置', `${formatMeasureBeat(pt.tick).replace(/\s/g, '')}`],
         ['時間', `${(ticksToMs(pt.tick) / 1000).toFixed(3)}s`],
         ['レーン', `${laneText}（幅 ${pt.width}）`]
       ];
@@ -8069,7 +8340,7 @@
         sel.value = v;
       }
       const info = document.getElementById('lblGridTickInfo');
-      if (info) info.textContent = `${getSnapTicks()}t`;
+      if (info) info.textContent = `${Math.round((getSnapTicks() / TICKS_PER_BEAT) * (60000 / Math.max(1, Number(state.bpm) || 120)))}ms`;
     }
 
     function setGridDivision(div) {
@@ -8722,7 +8993,7 @@
       }
       targetBadge.textContent = state.activeSlideDraft
         ? `${activePreset.name} · ${activeSlideTarget.points.length}点`
-        : `${activePreset.name} · ${activeSlideTarget.points[0].tick}t から · ${roleStr}を選択中`;
+        : `${activePreset.name} · ${(ticksToMs(activeSlideTarget.points[0].tick) / 1000).toFixed(2)}s から · ${roleStr}を選択中`;
 
       if (colorContainer) renderSlideColorSwatches(colorContainer, activePreset, activeSlideTarget);
 
@@ -8797,7 +9068,7 @@
         const opacityPct = Math.round((preset.colorOpacity ?? 1) * 100);
         const subInfo = preset.type === 'slide'
           ? `帯 +${preset.slideBodyWidthExtTotal.toFixed(1)}L${preset.slideGradientFade ? ' · グラデ' : ''}${(preset.slideColors?.length || 1) > 1 ? ` · ${preset.slideColors.length}色` : ''}`
-          : `横 +${preset.judgeWidthExtTotal.toFixed(1)}L${opacityPct < 100 ? ` · ${opacityPct}%` : ''}${!canPlaceAlone(preset) ? ' · 合体専用' : ''}`;
+          : `横 +${preset.judgeWidthExtTotal.toFixed(1)}L${opacityPct < 100 ? ` · ${opacityPct}%` : ''}${!canPlaceAlone(preset) ? ' · 合体専用' : ''}${preset.tapKind && preset.tapKind !== 'tap' ? ` · ${tapKindLabel(preset.tapKind)}` : ''}`;
         div.innerHTML = `
           <span class="swatch" style="background:${hexToRgba(preset.color, preset.colorOpacity ?? 1)}"></span>
           <div style="min-width:0;flex:1">
@@ -8837,7 +9108,7 @@
       document.getElementById('presetNameInput').value = preset.name;
       const codeInput = document.getElementById('presetCodeIdInput');
       if (codeInput) codeInput.value = preset.codeId || 'TAP';
-      document.getElementById('presetTypeSelect').value = preset.type;
+      document.getElementById('presetTypeSelect').value = preset.type === 'slide' ? 'slide' : (preset.tapKind || 'tap');
       document.getElementById('presetColorInput').value = preset.color;
       document.getElementById('lblPresetColorHex').textContent = preset.color.toUpperCase();
 
@@ -8943,7 +9214,16 @@
     }
 
     function updatePresetFormLabels() {
-      const type = document.getElementById('presetTypeSelect').value;
+      // 中央マークのチェック（矢印・粒）を、隠してある選択の値にそろえる
+      {
+        const mv = document.getElementById('selectTapCenterMark')?.value || 'none';
+        const cf = document.getElementById('chkMarkFlick');
+        const cd = document.getElementById('chkMarkDot');
+        if (cf) cf.checked = mv === 'flick' || mv === 'flickDot';
+        if (cd) cd.checked = mv === 'dot' || mv === 'flickDot';
+      }
+      const typeSel = document.getElementById('presetTypeSelect').value;
+      const type = typeOfTypeSelect(typeSel);
       const extTotalL = snapHalfLane(document.getElementById('presetJudgeWidthInput').value, 1.0);
       const sideExtL = (extTotalL / 2).toFixed(2);
 
@@ -8966,7 +9246,7 @@
       const lblTapOp = document.getElementById('lblTapColorOpacity');
       if (lblTapOp) lblTapOp.textContent = `${tapOpPct}%`;
 
-      document.getElementById('badgeEditingPresetType').textContent = type.toUpperCase();
+      document.getElementById('badgeEditingPresetType').textContent = type === 'slide' ? 'SLIDE' : tapKindBadge(kindOfTypeSelect(typeSel));
       document.getElementById('tapHorizontalJudgeBox').classList.toggle('hidden', type === 'slide');
       document.getElementById('slideSpecificSettingsBox').classList.toggle('hidden', type !== 'slide');
       document.getElementById('verticalJudgeSection')?.classList.toggle('hidden', type === 'slide');
@@ -9022,6 +9302,12 @@
           curPreset.placeAsEnd = f.end;
           curPreset.tapPlacementRole = placementRoleOf(f);
           curPreset.tapCenterMark = document.getElementById('selectTapCenterMark')?.value || 'none';
+          // 種類（叩き方）を変えたら、左の一覧の説明も変える
+          const newKind = kindOfTypeSelect(typeSel);
+          if (curPreset.tapKind !== newKind) {
+            curPreset.tapKind = newKind;
+            renderPresetList();
+          }
           curPreset.playSound = Boolean(document.getElementById('chkTapPlaySound')?.checked);
         }
       }
@@ -9096,11 +9382,40 @@
       }, true);
     });
 
+    // 種類（叩き方）を変えた時は、中央マークをそれらしい物にする（フリック → 矢印、トレース → 粒）。自分で選んだマークはそのまま
+    {
+      const KIND_MARK = { tap: 'none', trace: 'dot', flick: 'flick', traceFlick: 'flickDot' };
+      let lastKindSel = null;
+      const typeSelEl = document.getElementById('presetTypeSelect');
+      typeSelEl?.addEventListener('focus', () => { lastKindSel = typeSelEl.value; });
+      typeSelEl?.addEventListener('change', () => {
+        const markSel = document.getElementById('selectTapCenterMark');
+        const now = typeSelEl.value;
+        if (markSel && now !== 'slide') {
+          const prevMark = KIND_MARK[kindOfTypeSelect(lastKindSel)] || 'none';
+          if (markSel.value === 'none' || markSel.value === prevMark) markSel.value = KIND_MARK[kindOfTypeSelect(now)];
+        }
+        lastKindSel = now;
+        updatePresetFormLabels();
+      }, true);
+    }
+    // 中央マークのチェック（矢印・粒。両方も選べる）→ 隠してある選択の値
+    ['chkMarkFlick', 'chkMarkDot'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', () => {
+        const f = document.getElementById('chkMarkFlick')?.checked;
+        const d = document.getElementById('chkMarkDot')?.checked;
+        const sel = document.getElementById('selectTapCenterMark');
+        if (!sel) return;
+        sel.value = f && d ? 'flickDot' : (f ? 'flick' : (d ? 'dot' : 'none'));
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
     function readPresetFieldsFromForm() {
       return {
         name: document.getElementById('presetNameInput').value.trim() || 'カスタムノーツ',
         codeId: (document.getElementById('presetCodeIdInput')?.value.trim() || 'TAP').toUpperCase(),
-        type: document.getElementById('presetTypeSelect').value,
+        type: typeOfTypeSelect(document.getElementById('presetTypeSelect').value),
+        tapKind: kindOfTypeSelect(document.getElementById('presetTypeSelect').value),
         color: document.getElementById('presetColorInput').value,
         colorOpacity: (parseInt(document.getElementById('sliderTapColorOpacity')?.value, 10) || 100) / 100,
         ...(() => {
@@ -9251,10 +9566,11 @@
 
       const relayIdx = state.selectedRelayIndex ?? 0;
       const primaryPt = note.type === 'slide' ? (note.points[relayIdx] || note.points[0]) : note;
-      document.getElementById('inspectTickInput').value = primaryPt.tick;
+      // 位置は秒で見せる・入れる（中は Tick のまま）
+      document.getElementById('inspectTickInput').value = (ticksToMs(primaryPt.tick) / 1000).toFixed(3);
       document.getElementById('inspectLaneInput').value = primaryPt.lane;
       document.getElementById('inspectWidthInput').value = primaryPt.width;
-      document.getElementById('inspectTimeMs').value = `${ticksToMs(primaryPt.tick).toFixed(1)}ms`;
+      document.getElementById('inspectTimeMs').value = formatMeasureBeat(primaryPt.tick);
 
       // Update Judgment Summary Box in Inspector
       const preset = normalizePreset(getPresetById(note.presetId));
@@ -9320,7 +9636,7 @@
             <div class="flex items-center justify-between gap-1">
               <div class="truncate">
                 <span class="font-bold text-cyan-300">${roleTitle}</span>
-                <span class="text-[10px] mono text-slate-400 ml-1">L:${pt.lane} 幅:${pt.width}L T:${pt.tick}t</span>
+                <span class="text-[10px] mono text-slate-400 ml-1">L:${pt.lane} 幅:${pt.width}L ${(ticksToMs(pt.tick) / 1000).toFixed(3)}s</span>
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <button data-idx="${idx}" class="btn-sel-relay px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px]">選択</button>
@@ -9585,9 +9901,12 @@
           { code: '.time / .ms', insert: '.time', desc: '曲の頭からの時間（f / ms）' },
           { code: '.measure / .beat', insert: '.measure', desc: '何小節目・何拍目' },
           { code: '.lane / .right / .width / .center', insert: '.lane', desc: '左端のレーン・右端のレーン・幅・中央' },
-          { code: '.type', desc: '"tap" か "slide"' },
-          { code: '.role', desc: '"tap" "start" "relay" "end" のどれか' },
+          { code: '.type', desc: '"tap" か "slide"。タップは叩き方の "trace" "flick" "trace_flick" とも等しい（self.type == "flick" / self.type == "tap" はどのタップでもはい）' },
+          { code: '.role', desc: '"tap" "start" "relay" "end" のどれか。その点の叩き方（タップ・合体したタップ）の "trace" "flick" "trace_flick" とも等しい' },
+          { code: '.kind', desc: '叩き方："tap" "trace" "flick" "trace_flick"（スライドの合体していない点は "slide"）' },
           { code: '.is_tap / .is_slide / .is_start / .is_relay / .is_end', insert: '.is_tap', desc: 'その種類なら true' },
+          { code: '.is_trace / .is_flick / .is_trace_flick', insert: '.is_flick', desc: 'その叩き方なら true（合体したスライドの始点・終点は、合体したタップの叩き方）' },
+          { code: '.early / .late', insert: '.late', desc: 'BAD の判定幅の早い側・遅い側（f）。self.bad.early と同じ。ほかの判定は self.perfect.late のように書く' },
           { code: '.merged', desc: 'タップと合体しているスライドの始点・終点なら true' },
           { code: '.start_merged / .end_merged', insert: '.end_merged', desc: 'そのスライドの始点 / 終点にタップが合体しているか（スライドのどの点でも同じ値。タップは false）' },
           { code: '.name / .tap_name', insert: '.name', desc: 'ノーツ設定の名前 / 合体しているタップの名前' },
@@ -9792,7 +10111,9 @@
         const pt = note.type === 'slide' ? (note.points[state.selectedRelayIndex || 0] || note.points[0]) : note;
         const val = parseInt(e.target.value, 10) || 0;
         if (id.includes('Tick')) {
-          const desired = Math.max(0, Math.min(TOTAL_TICKS, val));
+          // 秒で入れた位置 → 一番近い Tick
+          const secVal = parseFloat(e.target.value);
+          const desired = Math.max(0, Math.min(TOTAL_TICKS, Math.round(msToTicksExact((Number.isFinite(secVal) ? secVal : 0) * 1000))));
           pt.tick = note.type === 'slide'
             ? clampSlidePointTick(note.points, state.selectedRelayIndex || 0, desired)
             : desired;
@@ -9913,9 +10234,12 @@
 
     function updateTransportReadout() {
       const t = Math.round(state.playback.currentTick);
-      document.getElementById('lblCurrentTick').textContent = String(t).padStart(4, '0');
+      // 再生位置は秒で出す（小節・拍と、その位置の BPM も）
+      document.getElementById('lblCurrentTick').textContent = (ticksToMs(t) / 1000).toFixed(2);
+      const lblTotal = document.getElementById('lblTotalTicks');
+      if (lblTotal) lblTotal.textContent = ` / ${(ticksToMs(TOTAL_TICKS) / 1000).toFixed(2)}s`;
       document.getElementById('lblMeasureBeat').textContent = formatMeasureBeat(t);
-      document.getElementById('lblCurrentSec').textContent = `${(ticksToMs(t) / 1000).toFixed(2)}s`;
+      document.getElementById('lblCurrentSec').textContent = `BPM ${Math.round(bpmAtTick(t) * 100) / 100}`;
       const slider = document.getElementById('sliderPlayhead');
       if (slider && document.activeElement !== slider) slider.value = t;
     }
@@ -10523,7 +10847,7 @@
         card.innerHTML = `
           <div class="truncate">
             <div class="font-bold text-amber-300 truncate">${escapeHtml(tpl.name)}</div>
-            <div class="text-[9px] mono text-slate-400">${(tpl.notes || []).length}ノーツ | 長さ:${escapeHtml(tpl.spanTicks || 0)}t</div>
+            <div class="text-[9px] mono text-slate-400">${(tpl.notes || []).length}ノーツ | 長さ:約${(((Number(tpl.spanTicks) || 0) / TICKS_PER_BEAT) * (60 / Math.max(1, Number(state.bpm) || 120))).toFixed(2)}s</div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
             <button type="button" data-tpl-paste="${idx}" class="px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-semibold" title="現在の赤い再生バーの位置にそのまま配置">配置</button>
@@ -10563,7 +10887,7 @@
           state.selectedNoteId = createdIds[createdIds.length - 1] || null;
           syncAllUI();
           saveToLocalStorage();
-          showToast(`テンプレート「${tpl.name}」${mirror ? '(左右反転)' : ''}を ${baseTick}t に配置しました`, 'success');
+          showToast(`テンプレート「${tpl.name}」${mirror ? '(左右反転)' : ''}を ${(ticksToMs(baseTick) / 1000).toFixed(3)}s（${formatMeasureBeat(baseTick)}）に配置しました`, 'success');
         };
         card.querySelector(`[data-tpl-paste="${idx}"]`)?.addEventListener('click', () => pastePattern(false));
         card.querySelector(`[data-tpl-mirror="${idx}"]`)?.addEventListener('click', () => pastePattern(true));
@@ -11376,6 +11700,12 @@
           TICKS_PER_BEAT, TICKS_PER_WHOLE, TICKS_PER_MEASURE, FPS: FPS_BASE,
           ticksToMs: (t) => ticksToMs(t),
           msToTicks: (ms) => msToTicksExact(ms),
+          // 設定の欄は秒で見せる・入れる：secOf(Tick) → 秒（ms まで）、tickOfSec(秒) → 一番近い Tick（整数）
+          secOf: (t) => Math.round(ticksToMs(t)) / 1000,
+          tickOfSec: (sec) => {
+            const v = Number(sec);
+            return Number.isFinite(v) ? Math.max(0, Math.round(msToTicksExact(v * 1000))) : 0;
+          },
           ticksToFrames: (t) => ticksToFrames(t),
           durationMs: (a, b) => durationMs(a, b),
           durationFrames: (a, b) => durationFrames(a, b),
@@ -11966,6 +12296,57 @@
             saveToLocalStorage();
             renderSavedSlotsList();
             return slot;
+          },
+          // 保存スロットの題名を変える（今開いているスロット・どのスロットでもない今の譜面なら、エディタの題名の欄も）。変えた題名を返す
+          // 同じ題名のスロットがある時は、後ろに (2) などを付ける（保存の時に上書きされないように）
+          renameSlot(slotId, title) {
+            let name = String(title || '').trim();
+            if (!name) return null;
+            const others = state.savedSlots.filter(s => s.id !== slotId).map(s => s.title);
+            if (others.includes(name)) {
+              let k = 2;
+              while (others.includes(`${name} (${k})`)) k++;
+              name = `${name} (${k})`;
+            }
+            const slot = slotId ? state.savedSlots.find(s => s.id === slotId) : null;
+            if (slot) slot.title = name;
+            if (!slotId || slotId === state.activeSlotId) {
+              const input = document.getElementById('inputProjectTitle');
+              if (input) input.value = name;
+            }
+            saveToLocalStorage();
+            renderSavedSlotsList();
+            return name;
+          },
+          // 保存スロットを消す（今開いているスロットなら、エディタの譜面は残り、どのスロットでもなくなる）
+          deleteSlot(slotId) {
+            const i = state.savedSlots.findIndex(s => s.id === slotId);
+            if (i < 0) return false;
+            if (state.savedSlots[i].id === state.activeSlotId) state.activeSlotId = null;
+            state.savedSlots.splice(i, 1);
+            saveToLocalStorage();
+            renderSavedSlotsList();
+            return true;
+          },
+          // 新しい空の譜面を保存スロットに作って開く（ノーツ設定・レイヤーは今の譜面と同じ）。作ったスロットを返す
+          newSlot({ title = '', bpm = 160, measures = 16 } = {}) {
+            const titles = state.savedSlots.map(s => s.title);
+            let name = String(title || '').trim() || '新しい譜面';
+            if (titles.includes(name)) {
+              let k = 2;
+              while (titles.includes(`${name} ${k}`)) k++;
+              name = `${name} ${k}`;
+            }
+            const slot = registerJsonIntoSavedSlots({ title: name, bpm, numMeasures: measures, notes: [], soflans: [], plugins: {}, presets: JSON.parse(JSON.stringify(state.presets)) }, name);
+            applyProjectDataToEditor(slot);
+            saveToLocalStorage();
+            renderSavedSlotsList();
+            return slot;
+          },
+          // 保存スロットを直接書き換えた後に保存する（slot.plugins などを変えた時）
+          persist() {
+            saveToLocalStorage();
+            renderSavedSlotsList();
           },
           // 以前の版で譜面の settings に保存していた設定（3D・背景など）
           legacySettings: () => ({ ...lastLoadedSettings })
