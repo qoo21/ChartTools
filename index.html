@@ -2234,6 +2234,8 @@
         <button data-tool="relay" class="tool-btn" title="中継点の追加・カーブ切替 (3)"><i class="fa-solid fa-bezier-curve"></i>中継点</button>
         <button data-tool="erase" class="tool-btn" title="消しゴム (4)"><i class="fa-solid fa-eraser"></i>消去</button>
       </div>
+      <!-- 道具の横のボタン（配置の幅など。プラグインの ui.addButton('tools', …)） -->
+      <span id="pluginToolSideSlot" class="hstack plugin-slot"></span>
       <!-- プラグインの道具の設定（ソフランの倍率など） -->
       <span id="pluginToolOptionsSlot" class="hstack"></span>
 
@@ -5986,6 +5988,7 @@
         `;
         card.addEventListener('click', () => {
           state.selectedNoteId = err.noteId;
+          state.selectedNoteIds = [];
           state.selectedRelayIndex = err.pointIndex || 0;
           if (isCompactLayout()) closeSheets();
           setPlayheadTick(err.tick);
@@ -6053,6 +6056,9 @@
     let pluginOuterLanes = 0;
     const minPlaceLane = () => 1 - pluginOuterLanes;
     const maxPlaceLane = () => NUM_LANES + pluginOuterLanes;
+    // 新しく置くノーツの幅（レーン）。標準は 3。プラグイン（配置の幅）が view.setPlaceWidth で変える
+    let placeWidthValue = DEFAULT_NOTE_WIDTH;
+    const placeWidthNow = () => Math.max(1, Math.min(maxPlaceLane() - minPlaceLane() + 1, Math.round(Number(placeWidthValue)) || DEFAULT_NOTE_WIDTH));
     // レーンの外側のレーンに置いたノーツは、ほとんど普通の濃さで描く（それより外にはみ出した物は薄く）
     function outsideAlphaOf(note) {
       if (pluginOuterLanes <= 0 || !note) return OUTSIDE_NOTE_ALPHA;
@@ -7446,14 +7452,15 @@
         ctx.restore();
       }
 
-      // 6.5 Ghost Preview when placing a new note (3-lane fixed default width)
+      // 6.5 Ghost Preview when placing a new note（新しく置く幅。標準は 3 レーン）
       // （ノーツに重なっている時はクリックで選択になるので、配置の予告は出さない）
       if (!state.pointer.isDown && state.currentTool === 'place' && !state.activeSlideDraft && !state.hoverTarget && state.pointer.hoverLane !== null && state.pointer.hoverTick !== null) {
         const preset = normalizePreset(getPresetById(state.selectedPresetId));
         if (preset) {
-          const ghostLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - DEFAULT_NOTE_WIDTH + 1, state.pointer.hoverLane));
+          const pw = placeWidthNow();
+          const ghostLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - pw + 1, state.pointer.hoverLane));
           const gx = laneToX(ghostLane);
-          const gw = DEFAULT_NOTE_WIDTH * state.laneWidthPx;
+          const gw = pw * state.laneWidthPx;
           const gy = tickToY(state.pointer.hoverTick);
           ctx.save();
           ctx.globalAlpha = 0.45;
@@ -7665,9 +7672,52 @@
       return false;
     }
 
-    function hitTestCanvas(x, y) {
+    // 選んでいるノーツの周りの「枠」：プラグイン（選択の枠）が view.setSelectionGrip で決める。null の時は使わない
+    // { padX：左右の端の外の広さ（幅を変える取っ手）, padY：上下の広さ（選択の道具の時）, placePadY：配置の道具の時の上下の広さ, grip：端の内側の取っ手の幅 }（px）
+    let selectionGrip = null;
+    const gripToolActive = () => Boolean(selectionGrip) && !state.activeSlideDraft && (state.currentTool === 'select' || state.currentTool === 'place');
+    // 端の内側の取っ手（幅を変える所）の幅。幅の狭いノーツでも真ん中をつかんで動かせるよう、ノーツの幅の 1/4 まで
+    const edgeGripOf = (w, max = 10) => Math.max(3, Math.min(max, w * 0.25));
+
+    // withGrip：選んでいるノーツの周りの枠もつかめる所にする（配置・選択の道具で、左ボタン・タッチ・カーソルの時）
+    function hitTestCanvas(x, y, withGrip = false) {
+      const hit = hitTestNotesAt(x, y);
+      if (hit || !withGrip || !gripToolActive()) return hit;
+      return hitTestSelectionGrip(x, y);
+    }
+
+    // 選んでいるノーツの枠（ノーツの外の取っ手・上下の余白）。1 つだけ選んでいるスライドは、選んでいる点だけ
+    function hitTestSelectionGrip(x, y) {
+      const sg = selectionGrip;
+      const ids = state.selectedNoteIds.length ? state.selectedNoteIds : (state.selectedNoteId ? [state.selectedNoteId] : []);
+      if (!sg || !ids.length) return null;
+      const single = ids.length === 1;
+      const padY = state.currentTool === 'place' ? sg.placePadY : sg.padY;
+      for (let i = ids.length - 1; i >= 0; i--) {
+        const note = state.notes.find(n => n.id === ids[i]);
+        if (!note || !isNoteEditable(note)) continue;
+        const isSlide = note.type === 'slide';
+        const pts = isSlide ? (note.points || []) : [note];
+        const idxs = isSlide && single ? [Math.max(0, Math.min(pts.length - 1, state.selectedRelayIndex || 0))] : pts.map((_, k) => k);
+        for (let j = idxs.length - 1; j >= 0; j--) {
+          const k = idxs[j];
+          const pt = pts[k];
+          if (!pt) continue;
+          const px = laneToX(pt.lane);
+          const pw = pt.width * state.laneWidthPx;
+          const py = tickToY(pt.tick);
+          if (Math.abs(y - py) > padY || x < px - sg.padX || x > px + pw + sg.padX) continue;
+          const g = edgeGripOf(pw, sg.grip);
+          const side = x <= px + g ? 'left' : (x >= px + pw - g ? 'right' : '');
+          if (isSlide) return { type: side ? `slide-node-resize-${side}` : 'slide-node', note, relayIndex: k, grip: true };
+          return { type: side ? `tap-resize-${side}` : 'tap-body', note, grip: true };
+        }
+      }
+      return null;
+    }
+
+    function hitTestNotesAt(x, y) {
       const hitRadiusY = 12;
-      const edgeGrip = 10;
       for (let i = state.notes.length - 1; i >= 0; i--) {
         const note = state.notes[i];
         if (!isNoteEditable(note)) continue;
@@ -7676,6 +7726,7 @@
           const nw = note.width * state.laneWidthPx;
           const ny = tickToY(note.tick);
           if (Math.abs(y - ny) <= hitRadiusY && x >= nx - 4 && x <= nx + nw + 4) {
+            const edgeGrip = edgeGripOf(nw);
             if (x <= nx + edgeGrip) return { type: 'tap-resize-left', note };
             if (x >= nx + nw - edgeGrip) return { type: 'tap-resize-right', note };
             return { type: 'tap-body', note };
@@ -7688,6 +7739,7 @@
             const pw = pt.width * state.laneWidthPx;
             const py = tickToY(pt.tick);
             if (Math.abs(y - py) <= hitRadiusY && x >= px - 4 && x <= px + pw + 4) {
+              const edgeGrip = edgeGripOf(pw);
               if (x <= px + edgeGrip) return { type: 'slide-node-resize-left', note, relayIndex: ptIdx };
               if (x >= px + pw - edgeGrip) return { type: 'slide-node-resize-right', note, relayIndex: ptIdx };
               return { type: 'slide-node', note, relayIndex: ptIdx };
@@ -7819,8 +7871,9 @@
       state.pointer.isDown = true;
       state.pointer.startLane = lane;
       state.pointer.startTick = tick;
+      state.pointer.resized = false;
 
-      const hit = hitTestCanvas(x, y);
+      const hit = hitTestCanvas(x, y, true);
 
       // 1. Playhead handle or ruler scrubbing
       if (!state.activeSlideDraft && (x < RULER_LEFT_WIDTH || (!hit && Math.abs(y - tickToY(state.playback.currentTick)) <= 11))) {
@@ -7856,6 +7909,7 @@
         if (hit && hit.note.type === 'slide') {
           pushHistory();
           state.selectedNoteId = hit.note.id;
+          state.selectedNoteIds = [];
           const preset = normalizePreset(getPresetById(hit.note.presetId));
           const isStartNode = hit.type.includes('slide-node') && hit.relayIndex === 0;
           const isEndNode = hit.type.includes('slide-node') && hit.relayIndex === hit.note.points.length - 1;
@@ -7916,8 +7970,10 @@
 
           if (hit.type.includes('resize-left')) {
             state.pointer.mode = 'resize-left';
+            setResizeGrab(hit, lane, 'left');
           } else if (hit.type.includes('resize-right')) {
             state.pointer.mode = 'resize-right';
+            setResizeGrab(hit, lane, 'right');
           } else if (state.selectedNoteIds.length > 1) {
             // 複数選択されているノーツ群の一括移動モード
             state.pointer.mode = 'move-multi-notes';
@@ -7958,8 +8014,10 @@
           state.selectedRelayIndex = state.pointer.targetRelayIndex;
           if (hit.type.includes('resize-left')) {
             state.pointer.mode = 'resize-left';
+            setResizeGrab(hit, lane, 'left');
           } else if (hit.type.includes('resize-right')) {
             state.pointer.mode = 'resize-right';
+            setResizeGrab(hit, lane, 'right');
           } else {
             state.pointer.mode = 'move-note';
             const refPt = hit.note.type === 'slide' ? hit.note.points[state.selectedRelayIndex] : hit.note;
@@ -7979,7 +8037,8 @@
 
         const preset = normalizePreset(getPresetById(state.selectedPresetId));
         if (!preset) return;
-        const clampedLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - DEFAULT_NOTE_WIDTH + 1, lane));
+        const placeW = placeWidthNow();
+        const clampedLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - placeW + 1, lane));
 
         if (preset.type === 'tap') {
           if (!canPlaceAlone(preset)) {
@@ -7994,10 +8053,12 @@
             type: 'tap',
             tick,
             lane: clampedLane,
-            width: DEFAULT_NOTE_WIDTH // Fixed standard width = 3
+            width: placeW // 新しく置く幅（標準は 3）
           };
           state.notes.push(newTap);
           state.selectedNoteId = newTap.id;
+          state.selectedNoteIds = []; // 置いたノーツだけを選ぶ（前に選んでいたノーツは外す）
+          emitPluginEvent('note:place', { noteId: newTap.id, pointIndex: null, tick, lane: newTap.lane, width: newTap.width });
           state.pointer.targetNoteId = newTap.id;
           state.pointer.mode = 'place-tap-created';
           playPlacementSound(newTap);
@@ -8014,10 +8075,12 @@
               startTapPresetId: preset.startTapPresetId || 'none',
               endTapPresetId: preset.endTapPresetId || 'none',
               colorIndex: Math.min(state.lastSlideColorIndex[preset.id] ?? 0, (preset.slideColors?.length || 1) - 1),
-              points: [{ tick, lane: clampedLane, width: DEFAULT_NOTE_WIDTH, curve: 'linear' }]
+              points: [{ tick, lane: clampedLane, width: placeW, curve: 'linear' }]
             };
             state.activeSlideDraft = newSlide;
             state.selectedNoteId = newSlide.id;
+            state.selectedNoteIds = [];
+            emitPluginEvent('note:place', { noteId: newSlide.id, pointIndex: 0, tick, lane: clampedLane, width: placeW });
             updateSlideBanner();
             playPlacementSound(newSlide, 0);
             syncAllUI();
@@ -8030,7 +8093,11 @@
               return;
             }
             const nextTick = Math.max(minAllowedTick, Math.min(TOTAL_TICKS, tick));
-            pts.push({ tick: nextTick, lane: clampedLane, width: DEFAULT_NOTE_WIDTH, curve: 'linear' });
+            // 続きの点は、前の点と同じ幅（置く前の予告と同じ）
+            const nextW = Math.max(1, Math.min(maxPlaceLane() - minPlaceLane() + 1, lastPt ? lastPt.width : placeW));
+            const nextLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - nextW + 1, lane));
+            pts.push({ tick: nextTick, lane: nextLane, width: nextW, curve: 'linear' });
+            emitPluginEvent('note:place', { noteId: state.activeSlideDraft.id, pointIndex: pts.length - 1, tick: nextTick, lane: nextLane, width: nextW });
             playPlacementSound(state.activeSlideDraft, pts.length - 1);
             syncAllUI();
           }
@@ -8053,7 +8120,7 @@
 
       if (!state.pointer.isDown) {
         // Update cursor based on hover target
-        const hit = hitTestCanvas(x, y);
+        const hit = hitTestCanvas(x, y, true);
         if (hitTestPlayhead(x, y)) {
           chartCanvas.style.cursor = 'ns-resize';
         } else if (hit && hit.type.includes('resize')) {
@@ -8147,13 +8214,19 @@
         : note;
 
       if (state.pointer.mode === 'resize-right') {
-        targetPt.width = Math.max(1, Math.min(maxPlaceLane() - targetPt.lane + 1, lane - targetPt.lane + 1));
+        const w0 = targetPt.width;
+        const edgeLane = lane - (state.pointer.resizeGrab || 0);
+        targetPt.width = Math.max(1, Math.min(maxPlaceLane() - targetPt.lane + 1, edgeLane - targetPt.lane + 1));
+        if (targetPt.width !== w0) state.pointer.resized = true;
         scheduleFrameUpdate('errors', 'inspector');
       } else if (state.pointer.mode === 'resize-left') {
+        const w0 = targetPt.width;
         const rightEdge = targetPt.lane + targetPt.width - 1;
-        const newLeft = Math.max(minPlaceLane(), Math.min(rightEdge, lane));
+        const newLeft = Math.max(minPlaceLane(), Math.min(rightEdge, lane - (state.pointer.resizeGrab || 0)));
+
         targetPt.lane = newLeft;
         targetPt.width = rightEdge - newLeft + 1;
+        if (targetPt.width !== w0) state.pointer.resized = true;
         scheduleFrameUpdate('errors', 'inspector');
       } else if (state.pointer.mode === 'move-note') {
         const newLane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - targetPt.width + 1, lane - state.pointer.dragOffsetLane));
@@ -8174,12 +8247,34 @@
     function handleCanvasPointerUp() {
       if (!state.pointer.isDown) return;
       state.pointer.isDown = false;
+      const endedMode = state.pointer.mode;
       if (state.pointer.mode === 'plugin') runCapturedCanvasHandler('up', null, state.pointer.rawX, state.pointer.rawY);
       state.pointer.mode = null;
       commitDragHistory();
       runAllErrorChecks();
       saveToLocalStorage();
       renderChart();
+      // 端をつかんで幅を変えた時は知らせる（配置の幅のプラグインが「前回の幅」にする）
+      if ((endedMode === 'resize-left' || endedMode === 'resize-right') && state.pointer.resized) {
+        state.pointer.resized = false;
+        emitNoteResize(state.pointer.targetNoteId, state.pointer.targetRelayIndex, 'drag');
+      }
+    }
+
+    // 端をつかんだ所のレーンと、ノーツの端のレーンの差（枠の外の取っ手をつかんでも、動かすまでは幅が変わらないように）
+    function setResizeGrab(hit, lane, side) {
+      const pt = hit && hit.note ? (hit.note.type === 'slide' ? hit.note.points?.[hit.relayIndex ?? 0] : hit.note) : null;
+      state.pointer.resizeGrab = pt ? lane - (side === 'left' ? pt.lane : pt.lane + pt.width - 1) : 0;
+    }
+
+    // ノーツの幅を変えた時の知らせ：note:resize { noteId, pointIndex, lane, width, source: 'drag' | 'inspector' }
+    function emitNoteResize(noteId, pointIndex, source) {
+      const note = state.notes.find(n => n.id === noteId);
+      if (!note) return;
+      const idx = note.type === 'slide' ? Math.max(0, Math.min((note.points || []).length - 1, Number(pointIndex) || 0)) : null;
+      const pt = note.type === 'slide' ? note.points?.[idx] : note;
+      if (!pt) return;
+      emitPluginEvent('note:resize', { noteId, pointIndex: idx, lane: pt.lane, width: pt.width, source });
     }
 
     chartCanvas.addEventListener('mousedown', handleCanvasPointerDown);
@@ -8206,7 +8301,7 @@
       const { x, y } = getCanvasMouseCoords(point);
       if (runCanvasHandlers('test', point, x, y)) return true;
       if (x < RULER_LEFT_WIDTH) return true;
-      const hit = hitTestCanvas(x, y);
+      const hit = hitTestCanvas(x, y, true);
       if (hit && hit.note) return state.currentTool === 'select' || state.currentTool === 'place';
       return Math.abs(y - tickToY(state.playback.currentTick)) <= 11;
     }
@@ -8287,6 +8382,7 @@
       draft.points.sort((a, b) => a.tick - b.tick);
       state.notes.push(draft);
       state.selectedNoteId = draft.id;
+      state.selectedNoteIds = [];
       state.activeSlideDraft = null;
       updateSlideBanner();
       syncAllUI();
@@ -10119,8 +10215,10 @@
             : desired;
         }
         if (id.includes('Lane')) pt.lane = Math.max(minPlaceLane(), Math.min(maxPlaceLane() - pt.width + 1, val));
+        const widthBefore = pt.width;
         if (id.includes('Width')) pt.width = Math.max(1, Math.min(maxPlaceLane() - pt.lane + 1, val));
         syncAllUI();
+        if (id.includes('Width') && pt.width !== widthBefore) emitNoteResize(note.id, note.type === 'slide' ? (state.selectedRelayIndex || 0) : null, 'inspector');
       });
     });
 
@@ -11465,6 +11563,7 @@
         canvasWidth: getCanvasWidth(),
         laneWidth: state.laneWidthPx,
         pxPerTick: state.measureHeightPx / TICKS_PER_MEASURE,
+        tool: state.currentTool,
         tickToY,
         laneToX
       };
@@ -11530,7 +11629,7 @@
 
     // ---- 部品 ----
     function pluginSlotEl(name) {
-      return document.getElementById({ toolbar: 'pluginToolbarSlot', topbar: 'pluginTopbarSlot', topbarStart: 'pluginTopbarStartSlot', left: 'pluginLeftSlot', right: 'pluginRightSlot', save: 'pluginSaveSlot', stage: 'stagePanelSlot' }[name] || '');
+      return document.getElementById({ toolbar: 'pluginToolbarSlot', topbar: 'pluginTopbarSlot', topbarStart: 'pluginTopbarStartSlot', tools: 'pluginToolSideSlot', left: 'pluginLeftSlot', right: 'pluginRightSlot', save: 'pluginSaveSlot', stage: 'stagePanelSlot' }[name] || '');
     }
 
     function createPluginApi(rec) {
@@ -11895,6 +11994,46 @@
             resizeAndRenderCanvas();
           },
           get outerLanes() { return pluginOuterLanes; },
+          // 新しく置くノーツの幅（レーン。標準 3）。setPlaceWidth(w) で変える（置く前の予告もその幅）→ 変えた後の幅
+          get placeWidth() { return placeWidthNow(); },
+          setPlaceWidth(w) {
+            const v = Math.round(Number(w));
+            if (!Number.isFinite(v) || v < 1) return placeWidthNow();
+            placeWidthValue = Math.min(64, v);
+            if (!rec._placeWidthOwned) {
+              rec._placeWidthOwned = true;
+              own(() => {
+                placeWidthValue = DEFAULT_NOTE_WIDTH;
+                scheduleFrameUpdate();
+              });
+            }
+            emitPluginEvent('place:width', { width: placeWidthNow() });
+            scheduleFrameUpdate();
+            return placeWidthNow();
+          },
+          // 選んでいるノーツの周りを広くつかめるようにする（選択の枠のプラグイン）。
+          // { padX：左右の端の外（幅を変える取っ手）, padY：上下（選択の道具）, placePadY：上下（配置の道具）, grip：端の内側の取っ手の幅 }（px）。null で外す
+          setSelectionGrip(opts) {
+            if (opts && typeof opts === 'object') {
+              const n = (v, lo, hi, d) => {
+                const x = Number(v);
+                return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d;
+              };
+              const padY = n(opts.padY, 8, 60, 18);
+              selectionGrip = { padX: n(opts.padX, 0, 40, 10), padY, placePadY: n(opts.placePadY, 8, 60, Math.min(padY, 12)), grip: n(opts.grip, 3, 24, 10) };
+            } else {
+              selectionGrip = null;
+            }
+            if (!rec._selectionGripOwned) {
+              rec._selectionGripOwned = true;
+              own(() => {
+                selectionGrip = null;
+                scheduleFrameUpdate();
+              });
+            }
+            scheduleFrameUpdate();
+          },
+          get selectionGrip() { return selectionGrip ? { ...selectionGrip } : null; },
           // フリックの矢印の向きの名前と角度（度。上が 0、右回り）
           flickDirAngles: () => ({ ...FLICK_DIR_ANGLES }),
           mirrorFlickDir: (d) => mirrorFlickDir(d),
@@ -11970,10 +12109,12 @@
             return el;
           },
           // slot: 'toolbar'（2段目の右側）/ 'topbar'（1段目）/ 'topbar-start'（1段目の一番左）
+          // 今の編集の道具（'place' 'select' 'relay' 'erase' か、プラグインの道具の id）
+          get tool() { return state.currentTool; },
           addButton(slot, opts = {}) {
-            const name = slot === 'topbar-start' ? 'topbarStart' : (slot === 'topbar' ? 'topbar' : 'toolbar');
+            const name = slot === 'topbar-start' ? 'topbarStart' : (slot === 'topbar' ? 'topbar' : (slot === 'tools' ? 'tools' : 'toolbar'));
             const host = pluginSlotEl(name);
-            const b = makeButton({ className: name === 'toolbar' ? 'btn btn-sm' : 'btn', ...opts });
+            const b = makeButton({ className: name === 'toolbar' || name === 'tools' ? 'btn btn-sm' : 'btn', ...opts });
             host?.appendChild(b.el);
             own(() => b.el.remove());
             updateBarOverflow();
